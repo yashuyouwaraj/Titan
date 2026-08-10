@@ -1,7 +1,10 @@
 """Tensor Library exception hierarchy."""
 
 from titan_ai.tensor.exceptions.errors import (
+    InvalidAxisError,
+    InvalidShapeError,
     TensorConstructionError,
+    TensorIndexError,
     TensorValidationError,
     TitanTensorError,
     UnsupportedDeviceError,
@@ -14,4 +17,7 @@ __all__ = [
     "TensorValidationError",
     "UnsupportedDeviceError",
     "UnsupportedDtypeError",
+    "InvalidShapeError",
+    "InvalidAxisError",
+    "TensorIndexError",
 ]

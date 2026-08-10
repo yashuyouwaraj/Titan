@@ -288,3 +288,87 @@ Day 2 — Implement the Tensor core abstraction: `Tensor` class, metadata, `Dtyp
 ### Next Engineering Goal
 
 Day 3 — Tensor creation helpers, shape operations, and indexing.
+
+---
+
+## Date
+
+2026-08-10
+
+---
+
+### Session Goal
+
+Day 3 — Implement Tensor factory methods, shape operations, indexing, slicing, NumPy conversion boundary, validation, and tests. No arithmetic, broadcasting, reductions, or autograd.
+
+---
+
+### Completed Work
+
+- Factory methods: `zeros`, `ones`, `empty`, `full`, `arange`, `from_numpy`
+- Shape operations: `reshape`, `transpose`, `T`, `flatten`, `squeeze`, `unsqueeze`
+- Indexing and slicing with Tensor/scalar return semantics
+- `tensor.numpy(copy=...)` with documented copy/view behavior
+- Extended `TensorBackend` and `NumpyBackend` with shape and indexing methods
+- New exceptions: `InvalidShapeError`, `InvalidAxisError`, `TensorIndexError`
+- 45 new tests (98 total, all passing)
+- Documentation, progress, and `.ai` status updated
+
+---
+
+### Research Performed
+
+- NumPy view vs copy semantics for reshape, transpose, flatten, and slicing
+- Indexing return type conventions (Tensor vs Python scalar)
+
+---
+
+### Engineering Decisions
+
+- Operations delegate through backend abstraction, not direct `_array` access from `Tensor`
+- Slice indexing returns views sharing storage; `flatten` always copies
+- `reshape` supports single `-1` dimension inference
+- `from_numpy` mirrors constructor `copy` semantics (default `copy=True`)
+- `numpy()` default `copy=True` for safety; `copy=False` exposes view
+- Integer indexing returns Python scalars; slices return `Tensor`
+
+---
+
+### Problems Encountered
+
+- None blocking completion
+
+---
+
+### Solutions
+
+- Shape normalization and `-1` inference in `operations/shape.py`
+- Backend `from_array` wrapper for view-creating NumPy operations
+
+---
+
+### Lessons Learned
+
+- Memory semantics must be documented and tested alongside API implementation
+- Backend protocol grows incrementally without breaking Day 2 construction semantics
+
+---
+
+### Performance Notes
+
+- None (no benchmarks on Day 3)
+
+---
+
+### Documentation Updated
+
+- `docs/04_AI/19_TENSOR_LIBRARY.md`
+- `docs/01_PROJECT/05_PROJECT_PROGRESS.md`
+- `docs/01_PROJECT/DAILY_ENGINEERING_LOG.md`
+- `.ai/titan-ai.json`
+
+---
+
+### Next Engineering Goal
+
+Day 4 — Arithmetic, broadcasting, and matrix multiplication.

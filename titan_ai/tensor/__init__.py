@@ -4,7 +4,10 @@ from titan_ai.tensor.core.tensor import Tensor
 from titan_ai.tensor.devices.devices import Device
 from titan_ai.tensor.dtypes.dtypes import Dtype
 from titan_ai.tensor.exceptions.errors import (
+    InvalidAxisError,
+    InvalidShapeError,
     TensorConstructionError,
+    TensorIndexError,
     TensorValidationError,
     TitanTensorError,
     UnsupportedDeviceError,
@@ -20,4 +23,7 @@ __all__ = [
     "TensorValidationError",
     "UnsupportedDeviceError",
     "UnsupportedDtypeError",
+    "InvalidShapeError",
+    "InvalidAxisError",
+    "TensorIndexError",
 ]

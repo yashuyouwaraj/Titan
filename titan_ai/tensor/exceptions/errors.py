@@ -19,3 +19,15 @@ class UnsupportedDeviceError(TitanTensorError):
 
 class UnsupportedDtypeError(TitanTensorError):
     """Raised when a dtype is not supported."""
+
+
+class InvalidShapeError(TensorValidationError):
+    """Raised when a shape is invalid or incompatible with an operation."""
+
+
+class InvalidAxisError(TensorValidationError):
+    """Raised when an axis index is out of bounds or invalid."""
+
+
+class TensorIndexError(TensorValidationError):
+    """Raised when tensor indexing is invalid."""

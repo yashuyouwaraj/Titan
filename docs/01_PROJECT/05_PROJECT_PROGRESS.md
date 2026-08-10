@@ -116,8 +116,12 @@ Architecture and documentation only until implementation phases complete.
 
 - [x] Architecture documented (`docs/04_AI/19_TENSOR_LIBRARY.md`)
 - [x] Core abstraction (Tensor, Dtype, Device, backend protocol, NumPy CPU backend)
-- [ ] Tensor operations (arithmetic, shape, indexing, reductions)
-- [ ] Core abstraction testing complete
+- [x] Factory methods (zeros, ones, empty, full, arange, from_numpy)
+- [x] Shape operations (reshape, transpose, flatten, squeeze, unsqueeze)
+- [x] Indexing and slicing
+- [ ] Arithmetic, broadcasting, and matrix multiplication
+- [ ] Reductions and mathematical operations
+- [x] Core and Day 3 testing (98 tests)
 - [ ] Benchmarking
 - [ ] Integration
 

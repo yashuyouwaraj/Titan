@@ -65,41 +65,147 @@ NumPy serves as the initial CPU numerical reference backend behind an explicit b
 
 # Public API
 
-**Currently implemented (Day 2):**
+**Currently implemented (Day 2–3):**
 
 ```python
 from titan_ai.tensor import Tensor, Device, Dtype
 
+# Construction
 tensor = Tensor([1, 2, 3])
 tensor = Tensor([[1, 2], [3, 4]], dtype=Dtype.float32, device=Device.cpu())
-tensor = Tensor(numpy_array, copy=True)  # NumPy array input; copy default True
+tensor = Tensor(numpy_array, copy=True)
 
+# Factories
+Tensor.zeros((2, 3), dtype=Dtype.float32)
+Tensor.ones((2, 3))
+Tensor.empty((2, 3))
+Tensor.full((2, 3), 7)
+Tensor.arange(5)
+Tensor.arange(2, 10, 2)
+Tensor.from_numpy(numpy_array, copy=True)
+
+# Metadata
 tensor.shape
 tensor.ndim
 tensor.dtype
 tensor.device
 tensor.size
+
+# Shape operations
+tensor.reshape(2, 3)
+tensor.reshape((2, -1))
+tensor.transpose()
+tensor.transpose(1, 0, 2)
+tensor.T  # 2D only
+tensor.flatten()
+tensor.squeeze()
+tensor.squeeze(axis=0)
+tensor.unsqueeze(0)
+
+# Indexing and slicing
+tensor[0]
+tensor[-1]
+tensor[1:3]
+tensor[:, 0]
+tensor[1, 2]
+
+# NumPy boundary
+array = tensor.numpy()        # copy by default
+view = tensor.numpy(copy=False)
+
+# Indexing returns Tensor for array-like results, Python scalar for scalars
 ```
 
 **Planned (later Week 1 days):**
 
 ```python
-Tensor.zeros(shape, dtype=..., device=...)
-Tensor.ones(...)
-Tensor.empty(...)
-Tensor.full(...)
-Tensor.arange(...)
-Tensor.from_numpy(...)
-
-# Operations (not yet implemented)
 tensor + tensor
-tensor.reshape(...)
-tensor.transpose(...)
 tensor.matmul(...)
 tensor.sum(...)
 ```
 
 The public import surface is `titan_ai.tensor`. Backend classes are not part of the primary public API.
+
+---
+
+# Factory Methods
+
+**Status:** implemented (Day 3).
+
+| Method | Description |
+|--------|-------------|
+| `Tensor.zeros` | Zero-filled tensor; default dtype `float64` |
+| `Tensor.ones` | One-filled tensor; default dtype `float64` |
+| `Tensor.empty` | Uninitialized allocation; contents not validated in tests |
+| `Tensor.full` | Constant-filled tensor; dtype inferred from value if omitted |
+| `Tensor.arange` | Arithmetic range; supports `stop` or `start, stop, step` |
+| `Tensor.from_numpy` | Explicit NumPy conversion; same `copy` semantics as constructor |
+
+All factories validate shape, dtype, and device through the backend boundary.
+
+---
+
+# Shape Operations
+
+**Status:** implemented (Day 3).
+
+| Operation | Behavior |
+|-----------|----------|
+| `reshape` | Supports tuple or integer args; single `-1` inference |
+| `transpose` | Reverses axes when called without args; optional axis permutation |
+| `T` | 2D transpose property |
+| `flatten` | Returns 1D **copy** |
+| `squeeze` | Removes singleton dimensions; optional axis |
+| `unsqueeze` | Inserts singleton dimension; supports negative axes |
+
+Shape operations preserve dtype and device. Invalid shapes and axes raise domain-specific errors.
+
+---
+
+# Indexing and Slicing
+
+**Status:** implemented (Day 3).
+
+- Integer indexing (including negative indices)
+- Slices and step slices
+- Multi-dimensional indexing with integers and slices
+- Scalar tensors indexed with `tensor[()]`
+
+**Return semantics:**
+
+- Array-like results return a new `Tensor`
+- Scalar extraction returns a Python `int`, `float`, or `bool`
+- Raw NumPy arrays are not exposed from indexing
+
+**Not implemented:** boolean masks, fancy indexing, advanced NumPy indexing forms.
+
+---
+
+# NumPy Boundary
+
+**`Tensor.from_numpy`:** identical copy semantics to `Tensor(ndarray, copy=...)`. Default `copy=True`.
+
+**`tensor.numpy(copy=True)`:** returns a NumPy array copy by default. `copy=False` returns a view sharing backend storage when supported.
+
+NumPy remains behind the backend; these methods are explicit conversion boundaries.
+
+---
+
+# Memory and View Semantics (Day 3)
+
+| Operation | Storage behavior |
+|-----------|------------------|
+| Constructor / `from_numpy` | `copy=True` copies; `copy=False` shares if dtype matches |
+| `reshape` | May share storage (NumPy view when possible) |
+| `transpose` | Typically a view |
+| `flatten` | Always copies |
+| `squeeze` / `unsqueeze` | Typically views |
+| Slice indexing | View sharing storage with parent |
+| Integer indexing | Scalar value, no tensor storage |
+| `numpy(copy=True)` | Copy |
+| `numpy(copy=False)` | View when backend supports it |
+
+These semantics are tested and matter for future autograd and performance work.
 
 ---
 
@@ -256,17 +362,20 @@ Autograd belongs to a subsequent phase after the CPU tensor foundation is correc
 
 # Error Handling Strategy
 
-**Implemented (Day 2):**
+**Implemented (Day 2–3):**
 
 | Exception | When |
 |-----------|------|
 | `TitanTensorError` | Base for all tensor errors |
 | `TensorConstructionError` | Invalid or unconvertible input data |
-| `TensorValidationError` | Validation failures (e.g. zero-copy dtype mismatch) |
+| `TensorValidationError` | Validation failures |
 | `UnsupportedDeviceError` | Unsupported device (including CUDA in Week 1) |
 | `UnsupportedDtypeError` | Unsupported or unmapped dtype |
+| `InvalidShapeError` | Invalid or incompatible shape |
+| `InvalidAxisError` | Invalid axis for shape operations |
+| `TensorIndexError` | Invalid indexing |
 
-**Planned (later days):** shape mismatch, broadcast error, invalid reshape, invalid axis, index errors.
+**Planned (later days):** broadcast error, operation-specific errors.
 
 Metadata properties (`shape`, `dtype`, `device`, `ndim`, `size`) are read-only Python properties without setters.
 
@@ -284,9 +393,9 @@ Metadata properties (`shape`, `dtype`, `device`, `ndim`, `size`) are read-only P
 
 # Testing Strategy
 
-**Currently implemented (Day 2):** 53 unit tests under `tests/ai/tensor/` covering construction, metadata, dtypes, devices, exceptions, storage ownership, and public API imports.
+**Currently implemented (Day 3):** 98 unit tests under `tests/ai/tensor/` covering construction, metadata, dtypes, devices, factories, shape ops, indexing, exceptions, storage ownership, and public API imports.
 
-**Planned coverage (later days):** factory methods, indexing, shape ops, arithmetic, broadcasting, matmul, reductions, math ops.
+**Planned coverage (later days):** arithmetic, broadcasting, matmul, reductions, math ops.
 
 ---
 
@@ -372,10 +481,14 @@ Each layer depends on a stable, tested tensor foundation.
 | Component | Architecture | Implementation | Testing | Benchmarking |
 |-----------|--------------|----------------|---------|--------------|
 | Package (`titan_ai.tensor`) | Documented | Implemented | Partial | — |
-| Tensor class | Documented | Core implemented | Partial (53 tests) | — |
+| Tensor class (core) | Documented | Implemented | Tested | — |
 | Dtype / Device | Documented | Implemented | Tested | — |
-| NumPy backend | Documented | Foundation implemented | Tested | — |
-| Operations | Documented | Not started | Not started | Not started |
+| NumPy backend | Documented | Implemented | Tested | — |
+| Factory methods | Documented | Implemented | Tested | — |
+| Shape operations | Documented | Implemented | Tested | — |
+| Indexing / slicing | Documented | Implemented | Tested | — |
+| Arithmetic / broadcasting | Documented | Not started | Not started | — |
+| Reductions / math ops | Documented | Not started | Not started | Not started |
 | Error types (core) | Documented | Implemented | Tested | — |
 
 This table must be updated as implementation progresses. Do not mark items complete until the project's completion criteria are met.

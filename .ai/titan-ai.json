@@ -218,7 +218,7 @@
   "current_status": {
     "documentation": "Completed",
     "implementation": "In Progress",
-    "current_focus": "Tensor Library — Day 2 Tensor Core Abstraction",
-    "next_step": "Day 3 — Tensor Creation, Shape Operations and Indexing"
+    "current_focus": "Tensor Library — Day 3 Creation, Shape and Indexing",
+    "next_step": "Day 4 — Arithmetic, Broadcasting and Matrix Multiplication"
   }
 }
