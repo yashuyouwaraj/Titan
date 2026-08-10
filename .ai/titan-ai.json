@@ -1,0 +1,224 @@
+{
+  "chatgpt_context": {
+    "role": "Principal AI Research Engineer",
+    "primary_goal": "Help design and build Titan AI from first principles.",
+    "always_prioritize": [
+      "Correctness",
+      "Architecture",
+      "Performance",
+      "Scalability",
+      "Research"
+    ],
+    "never_suggest": [
+      "Using proprietary AI APIs as core components",
+      "Quick hacks",
+      "Temporary architecture"
+    ],
+    "documentation_root": "docs/",
+    "project_root": "./"
+  },
+  "project": {
+    "name": "Titan AI",
+    "type": "Artificial Intelligence Research Platform",
+    "description": "A fully self-hosted, end-to-end artificial intelligence ecosystem built entirely from first principles without relying on proprietary AI APIs.",
+    "motto": "Understand Everything. Build Everything. Own Everything.",
+    "repository_type": "Monorepo",
+    "local_first": true,
+    "api_free": true,
+    "open_source": true
+  },
+
+  "documentation": {
+    "root": "docs",
+    "master_document": "00_FOUNDATION/03_MASTER_DOCUMENTATION.md",
+    "documents": [
+      {
+        "id": "project_vision",
+        "title": "Project Vision",
+        "path": "00_FOUNDATION/01_PROJECT_VISION.md",
+        "category": "Foundation"
+      },
+      {
+        "id": "system_instructions",
+        "title": "System Instructions",
+        "path": "00_FOUNDATION/02_SYSTEM_INSTRUCTIONS.md",
+        "category": "Foundation"
+      },
+      {
+        "id": "master_documentation",
+        "title": "Master Documentation",
+        "path": "00_FOUNDATION/03_MASTER_DOCUMENTATION.md",
+        "category": "Foundation"
+      },
+      {
+        "id": "roadmap",
+        "title": "Roadmap",
+        "path": "01_PROJECT/04_ROADMAP.md",
+        "category": "Project"
+      },
+      {
+        "id": "project_progress",
+        "title": "Project Progress",
+        "path": "01_PROJECT/05_PROJECT_PROGRESS.md",
+        "category": "Project"
+      },
+      {
+        "id": "folder_structure",
+        "title": "Folder Structure",
+        "path": "01_PROJECT/06_FOLDER_STRUCTURE.md",
+        "category": "Project"
+      },
+      {
+        "id": "tech_stack",
+        "title": "Technology Stack",
+        "path": "02_ENGINEERING/07_TECH_STACK.md",
+        "category": "Engineering"
+      },
+      {
+        "id": "technology_decisions",
+        "title": "Technology Decisions",
+        "path": "02_ENGINEERING/08_TECHNOLOGY_DECISIONS.md",
+        "category": "Engineering"
+      },
+      {
+        "id": "system_architecture",
+        "title": "System Architecture",
+        "path": "02_ENGINEERING/09_SYSTEM_ARCHITECTURE.md",
+        "category": "Engineering"
+      },
+      {
+        "id": "engineering_constitution",
+        "title": "Engineering Constitution",
+        "path": "02_ENGINEERING/10_ENGINEERING_CONSTITUTION.md",
+        "category": "Engineering"
+      },
+      {
+        "id": "ai_philosophy",
+        "title": "AI Philosophy",
+        "path": "03_RESEARCH/11_AI_PHILOSOPHY.md",
+        "category": "Research"
+      },
+      {
+        "id": "llm_architecture",
+        "title": "LLM Architecture",
+        "path": "04_AI/12_LLM_ARCHITECTURE.md",
+        "category": "AI"
+      },
+      {
+        "id": "tokenizer",
+        "title": "Tokenizer",
+        "path": "04_AI/13_TOKENIZER.md",
+        "category": "AI"
+      },
+      {
+        "id": "dataset_pipeline",
+        "title": "Dataset Pipeline",
+        "path": "04_AI/14_DATASET_PIPELINE.md",
+        "category": "AI"
+      },
+      {
+        "id": "training_pipeline",
+        "title": "Training Pipeline",
+        "path": "04_AI/15_TRAINING_PIPELINE.md",
+        "category": "AI"
+      },
+      {
+        "id": "inference_engine",
+        "title": "Inference Engine",
+        "path": "04_AI/16_INFERENCE_ENGINE.md",
+        "category": "AI"
+      },
+      {
+        "id": "memory_engine",
+        "title": "Memory Engine",
+        "path": "04_AI/17_MEMORY_ENGINE.md",
+        "category": "AI"
+      },
+      {
+        "id": "agent_system",
+        "title": "Agent System",
+        "path": "04_AI/18_AGENT_SYSTEM.md",
+        "category": "AI"
+      },
+      {
+        "id": "tensor_library",
+        "title": "Tensor Library",
+        "path": "04_AI/19_TENSOR_LIBRARY.md",
+        "category": "AI"
+      },
+      {
+        "id": "vision_model",
+        "title": "Vision Model",
+        "path": "05_MULTIMODAL/19_VISION_MODEL.md",
+        "category": "Multimodal"
+      },
+      {
+        "id": "image_generation",
+        "title": "Image Generation",
+        "path": "05_MULTIMODAL/20_IMAGE_GENERATION.md",
+        "category": "Multimodal"
+      },
+      {
+        "id": "video_generation",
+        "title": "Video Generation",
+        "path": "05_MULTIMODAL/21_VIDEO_GENERATION.md",
+        "category": "Multimodal"
+      },
+      {
+        "id": "audio_system",
+        "title": "Audio System",
+        "path": "05_MULTIMODAL/22_AUDIO_SYSTEM.md",
+        "category": "Multimodal"
+      },
+      {
+        "id": "platform_architecture",
+        "title": "Platform Architecture",
+        "path": "06_PLATFORM/23_PLATFORM_ARCHITECTURE.md",
+        "category": "Platform"
+      },
+      {
+        "id": "security",
+        "title": "Security and Privacy",
+        "path": "06_PLATFORM/24_SECURITY_AND_PRIVACY.md",
+        "category": "Platform"
+      },
+      {
+        "id": "research_reference",
+        "title": "Research and References",
+        "path": "03_RESEARCH/25_RESEARCH_AND_REFERENCES.md",
+        "category": "Research"
+      }
+    ]
+  },
+
+  "modules": {
+    "core": ["Tokenizer", "LLM", "Training", "Inference", "Memory", "Agents"],
+    "multimodal": ["Vision", "Image Generation", "Video Generation", "Audio"],
+    "platform": ["Frontend", "Backend", "Infrastructure", "Security"]
+  },
+
+  "tech_stack": {
+    "languages": ["Python", "Java", "TypeScript", "SQL", "Bash", "C++", "CUDA"],
+    "ai": ["PyTorch", "NumPy", "SentencePiece", "Triton", "TensorRT", "ONNX"],
+    "backend": ["Spring Boot", "Kafka", "Redis", "PostgreSQL"],
+    "frontend": ["React", "Next.js", "Tailwind CSS"],
+    "infrastructure": ["Docker", "Kubernetes", "NGINX", "Prometheus", "Grafana"]
+  },
+
+  "development_rules": {
+    "documentation_first": true,
+    "local_first": true,
+    "self_hosted": true,
+    "no_proprietary_ai_api": true,
+    "modular_architecture": true,
+    "research_driven": true,
+    "first_principles": true
+  },
+
+  "current_status": {
+    "documentation": "Completed",
+    "implementation": "In Progress",
+    "current_focus": "Tensor Library — Day 2 Tensor Core Abstraction",
+    "next_step": "Day 3 — Tensor Creation, Shape Operations and Indexing"
+  }
+}
