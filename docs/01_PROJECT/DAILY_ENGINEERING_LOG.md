@@ -551,3 +551,98 @@ Day 5 — Implement Tensor reductions (`sum`, `mean`, `min`, `max`) and mathemat
 ### Next Engineering Goal
 
 Day 6 — Tensor library hardening, testing, benchmarks, and API review.
+
+---
+
+## Date
+
+2026-08-15
+
+---
+
+### Session Goal
+
+Day 6 — Production-quality audit of the Tensor Library: correctness, API, memory semantics, tests, documentation, and a CPU performance baseline. No new numerical features.
+
+---
+
+### Baseline
+
+- Git: `82c2c7a` on `main`, clean, synced with `origin/main`
+- pytest: 256 passed
+- ruff check / format: passed
+
+---
+
+### Completed Work
+
+- Audited public API, constructor, dtype, device, shapes, broadcasting, matmul, reductions, math, indexing, memory, and exceptions
+- Fixed 0-d arithmetic/math failing when NumPy ufuncs return scalars
+- Allowed shape `()` for factories and reshape (0-d tensors)
+- Coerced `device="cpu"` strings instead of leaking `AttributeError`
+- Added regression tests, invariants, mixed indexing, and view-semantics tests
+- Added `benchmarks/tensor/run_baseline.py` and recorded timings
+- Updated Tensor docs, progress, and `.ai` status
+
+---
+
+### Research Performed
+
+- NumPy 0-d ufunc return types (`np.add` on 0-d arrays can yield `numpy.generic`, not `ndarray`)
+- NumPy `zeros(())` vs `array([])` shape distinction
+
+---
+
+### Engineering Decisions
+
+- Wrap all NumPy ufunc results with `np.asarray` before backend storage
+- Treat empty shape tuple `()` as 0-d; keep `Tensor([])` as shape `(0,)` (data, not a shape spec)
+- Accept `device="cpu"` via `Device` construction
+- No performance optimizations: small-tensor overhead is expected Python dispatch
+- Public API unchanged (`titan_ai.tensor` still exports Tensor, Dtype, Device, exceptions only)
+
+---
+
+### Problems Encountered
+
+- `Tensor(3) + 1`, `-Tensor(3)`, `Tensor(9.0).sqrt()` raised `TensorValidationError: NumpyBackend storage must be a NumPy ndarray`
+- `Tensor.zeros(())` and `reshape(())` rejected despite 0-d tensors from scalars/reductions
+- `Tensor(..., device="cpu")` raised raw `AttributeError`
+
+---
+
+### Solutions
+
+- `_wrap_result` in `NumpyBackend` for binary, unary, and negate
+- `normalize_shape` accepts `()`
+- `_resolve_device` accepts `Device | str | None`
+
+---
+
+### Lessons Learned
+
+- 0-d is a first-class Tensor rank; every backend op must tolerate NumPy scalar results
+- Factory shape rules must match the ranks the rest of the API can produce
+
+---
+
+### Performance Notes
+
+Measured on this development machine with `py benchmarks/tensor/run_baseline.py` (`float64`, min of repeats). Ratios are Titan time / NumPy time.
+
+Small tensors show wrapper overhead. Medium compute-heavy ops approach NumPy time. Sub-1.0 ratios at large sizes are treated as timing noise, not a Titan advantage. No optimizations were applied.
+
+---
+
+### Documentation Updated
+
+- `docs/04_AI/19_TENSOR_LIBRARY.md`
+- `docs/01_PROJECT/05_PROJECT_PROGRESS.md`
+- `docs/01_PROJECT/DAILY_ENGINEERING_LOG.md`
+- `.ai/titan-ai.json`
+
+---
+
+### Next Engineering Goal
+
+Day 7 — Tensor Library final review, integration, and release readiness.

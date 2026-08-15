@@ -65,7 +65,7 @@ NumPy serves as the initial CPU numerical reference backend behind an explicit b
 
 # Public API
 
-**Currently implemented (Day 2–5):**
+**Currently implemented (Day 2–6):**
 
 ```python
 from titan_ai.tensor import Tensor, Device, Dtype
@@ -73,10 +73,12 @@ from titan_ai.tensor import Tensor, Device, Dtype
 # Construction
 tensor = Tensor([1, 2, 3])
 tensor = Tensor([[1, 2], [3, 4]], dtype=Dtype.float32, device=Device.cpu())
+tensor = Tensor([1, 2, 3], device="cpu")
 tensor = Tensor(numpy_array, copy=True)
 
 # Factories
 Tensor.zeros((2, 3), dtype=Dtype.float32)
+Tensor.zeros(())
 Tensor.ones((2, 3))
 Tensor.empty((2, 3))
 Tensor.full((2, 3), 7)
@@ -174,7 +176,7 @@ The public import surface is `titan_ai.tensor`. Backend classes are not part of 
 | `Tensor.arange` | Arithmetic range; supports `stop` or `start, stop, step` |
 | `Tensor.from_numpy` | Explicit NumPy conversion; same `copy` semantics as constructor |
 
-All factories validate shape, dtype, and device through the backend boundary.
+All factories validate shape, dtype, and device through the backend boundary. Shape `()` creates a 0-dimensional tensor (one element). Device may be a `Device` instance or the string `"cpu"`.
 
 ---
 
@@ -184,7 +186,7 @@ All factories validate shape, dtype, and device through the backend boundary.
 
 | Operation | Behavior |
 |-----------|----------|
-| `reshape` | Supports tuple or integer args; single `-1` inference |
+| `reshape` | Supports tuple or integer args; single `-1` inference; `()` for size-1 → 0-d |
 | `transpose` | Reverses axes when called without args; optional axis permutation |
 | `T` | 2D transpose property |
 | `flatten` | Returns 1D **copy** |
@@ -264,7 +266,7 @@ Metadata is owned by the `Tensor` wrapper and validated at construction and on o
 
 # Backend Architecture
 
-**Currently implemented (Day 2–5):**
+**Currently implemented (Day 2–6):**
 
 ```text
 titan_ai/tensor/
@@ -326,6 +328,7 @@ CUDA support will not be claimed in documentation or API until implemented and t
 - `Device` class with `cpu` support
 - `Device.cpu()` factory
 - Every tensor carries an explicit `device` property
+- Construction accepts `Device.cpu()` or the string `"cpu"`; other values raise `UnsupportedDeviceError`
 - `Device("cuda")` raises `UnsupportedDeviceError` with a clear message
 - Device equality supports `Device` instances and `"cpu"` strings
 
@@ -364,7 +367,7 @@ CUDA support will not be claimed in documentation or API until implemented and t
 | `-a` | Unary negation |
 | `a @ b` | Matrix multiplication |
 
-Every operator returns a **new** `Tensor`. Operands are not mutated.
+Every operator returns a **new** `Tensor`. Operands are not mutated. 0-dimensional tensors participate in arithmetic and math; NumPy 0-d ufunc scalars are wrapped back into Tensor storage.
 
 Supported scalar operands: Python `bool`, `int`, `float`, and NumPy scalars whose dtype maps to a Titan `Dtype`. Lists, strings, and other objects raise `UnsupportedOperandError`.
 
@@ -685,24 +688,23 @@ Metadata properties (`shape`, `dtype`, `device`, `ndim`, `size`) are read-only P
 
 # Testing Strategy
 
-**Currently implemented (Day 5):** 256 unit tests under `tests/ai/tensor/` covering construction, metadata, dtypes, devices, factories, shape ops, indexing, arithmetic, broadcasting, dtype promotion, matmul, reductions, mathematical functions, exceptions, storage ownership, and public API imports.
+**Currently implemented (Day 6):** 284 unit tests under `tests/ai/tensor/` covering construction, metadata, dtypes, devices, factories, shape ops, indexing, arithmetic, broadcasting, dtype promotion, matmul, reductions, mathematical functions, 0-d tensors, invariants, exceptions, storage ownership, and public API imports.
 
-**Planned coverage (later days):** broader API hardening, benchmarks.
+Day 6 added regression coverage for 0-dimensional arithmetic/math (NumPy ufuncs can return scalars) and factory/reshape support for shape `()`.
 
 ---
 
 # Benchmark Strategy
 
-**Currently implemented:** directory placeholder (`benchmarks/tensor/`).
+**Currently implemented (Day 6):** `benchmarks/tensor/run_baseline.py` times Titan operations against equivalent NumPy calls for small (`128×128`, matmul `64×64`) and medium (`1024×1024`, matmul `256×256`) `float64` tensors.
 
-**Planned:**
+The baseline measures wall-clock time per call (minimum of repeats). Titan is expected to be slower than raw NumPy because of Python dispatch, validation, and wrapper allocation. Results are observations, not performance claims or optimization targets.
 
-- Baseline timings for creation, addition, matmul, reshape, reductions
-- Record operation, tensor size, execution time, environment
-- Optional NumPy comparison without unsupported performance claims
-- Output to `benchmarks/output/` (gitignored)
+Run:
 
-Benchmarking establishes baselines before optimization, not premature tuning.
+```text
+py benchmarks/tensor/run_baseline.py
+```
 
 ---
 
@@ -772,16 +774,16 @@ Each layer depends on a stable, tested tensor foundation.
 
 | Component | Architecture | Implementation | Testing | Benchmarking |
 |-----------|--------------|----------------|---------|--------------|
-| Package (`titan_ai.tensor`) | Documented | Implemented | Partial | — |
-| Tensor class (core) | Documented | Implemented | Tested | — |
+| Package (`titan_ai.tensor`) | Documented | Implemented | Tested | Baseline |
+| Tensor class (core) | Documented | Implemented | Tested | Baseline |
 | Dtype / Device | Documented | Implemented | Tested | — |
 | NumPy backend | Documented | Implemented | Tested | — |
-| Factory methods | Documented | Implemented | Tested | — |
-| Shape operations | Documented | Implemented | Tested | — |
-| Indexing / slicing | Documented | Implemented | Tested | — |
-| Arithmetic / broadcasting | Documented | Implemented | Tested | — |
-| Matrix multiplication | Documented | Implemented (1D/2D) | Tested | — |
-| Reductions / math ops | Documented | Implemented | Tested | — |
+| Factory methods | Documented | Implemented | Tested | Baseline |
+| Shape operations | Documented | Implemented | Tested | Baseline |
+| Indexing / slicing | Documented | Implemented | Tested | Baseline |
+| Arithmetic / broadcasting | Documented | Implemented | Tested | Baseline |
+| Matrix multiplication | Documented | Implemented (1D/2D) | Tested | Baseline |
+| Reductions / math ops | Documented | Implemented | Tested | Baseline |
 | Error types (core) | Documented | Implemented | Tested | — |
 
 This table must be updated as implementation progresses. Do not mark items complete until the project's completion criteria are met.

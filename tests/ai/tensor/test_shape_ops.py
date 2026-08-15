@@ -110,3 +110,15 @@ class TestShapeMemorySemantics:
         flat = original.flatten()
         tensor_numpy_array(original)[0, 0] = 99
         assert tensor_numpy_array(flat)[0] == 1
+
+    def test_transpose_is_view(self) -> None:
+        original = Tensor(np.arange(6).reshape(2, 3))
+        transposed = original.transpose()
+        tensor_numpy_array(original)[0, 0] = 99
+        assert tensor_numpy_array(transposed)[0, 0] == 99
+
+    def test_squeeze_is_view(self) -> None:
+        original = Tensor(np.arange(3).reshape(1, 3))
+        squeezed = original.squeeze()
+        tensor_numpy_array(original)[0, 0] = 7
+        assert tensor_numpy_array(squeezed)[0] == 7

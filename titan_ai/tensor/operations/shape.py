@@ -11,7 +11,7 @@ def normalize_shape(shape: int | tuple[int, ...] | list[int]) -> tuple[int, ...]
         return (shape,)
     if isinstance(shape, (tuple, list)):
         if len(shape) == 0:
-            raise InvalidShapeError("Shape must contain at least one dimension.")
+            return ()
         normalized: list[int] = []
         for dim in shape:
             if not isinstance(dim, int):

@@ -21,8 +21,16 @@ ArrayLike = Any
 _DEFAULT_FACTORY_DTYPE = Dtype.float64
 
 
-def _resolve_device(device: Device | None) -> Device:
-    return device if device is not None else Device.cpu()
+def _resolve_device(device: Device | str | None) -> Device:
+    if device is None:
+        return Device.cpu()
+    if isinstance(device, Device):
+        return device
+    if isinstance(device, str):
+        return Device(device)
+    raise UnsupportedDeviceError(
+        f"Unsupported device {device!r}. Provide Device.cpu() or the string 'cpu'."
+    )
 
 
 def _create_backend(
@@ -105,7 +113,7 @@ class Tensor:
         data: ArrayLike,
         *,
         dtype: Dtype | None = None,
-        device: Device | None = None,
+        device: Device | str | None = None,
         copy: bool = True,
     ) -> None:
         resolved_device = _resolve_device(device)
@@ -128,7 +136,7 @@ class Tensor:
         shape: int | tuple[int, ...] | list[int],
         *,
         dtype: Dtype | None = None,
-        device: Device | None = None,
+        device: Device | str | None = None,
     ) -> "Tensor":
         """Create a tensor filled with zeros."""
         normalized_shape = normalize_shape(shape)
@@ -147,7 +155,7 @@ class Tensor:
         shape: int | tuple[int, ...] | list[int],
         *,
         dtype: Dtype | None = None,
-        device: Device | None = None,
+        device: Device | str | None = None,
     ) -> "Tensor":
         """Create a tensor filled with ones."""
         normalized_shape = normalize_shape(shape)
@@ -166,7 +174,7 @@ class Tensor:
         shape: int | tuple[int, ...] | list[int],
         *,
         dtype: Dtype | None = None,
-        device: Device | None = None,
+        device: Device | str | None = None,
     ) -> "Tensor":
         """Create a tensor with uninitialized storage."""
         normalized_shape = normalize_shape(shape)
@@ -186,7 +194,7 @@ class Tensor:
         value: int | float | bool,
         *,
         dtype: Dtype | None = None,
-        device: Device | None = None,
+        device: Device | str | None = None,
     ) -> "Tensor":
         """Create a tensor filled with a constant value."""
         normalized_shape = normalize_shape(shape)
@@ -208,7 +216,7 @@ class Tensor:
         step: int | float = 1,
         *,
         dtype: Dtype | None = None,
-        device: Device | None = None,
+        device: Device | str | None = None,
     ) -> "Tensor":
         """Create a tensor containing an arithmetic range."""
         if step == 0:
@@ -229,7 +237,7 @@ class Tensor:
         array: np.ndarray,
         *,
         dtype: Dtype | None = None,
-        device: Device | None = None,
+        device: Device | str | None = None,
         copy: bool = True,
     ) -> "Tensor":
         """Create a tensor from a NumPy array with explicit copy semantics."""

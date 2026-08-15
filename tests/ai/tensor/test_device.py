@@ -26,6 +26,12 @@ class TestDevice:
         tensor = Tensor([1, 2, 3], device=Device("cpu"))
         assert tensor.device == Device.cpu()
 
+    def test_tensor_accepts_cpu_string(self) -> None:
+        tensor = Tensor([1, 2, 3], device="cpu")
+        assert tensor.device == Device.cpu()
+        zeros = Tensor.zeros((2,), device="cpu")
+        assert zeros.device == Device.cpu()
+
     def test_cuda_device_raises(self) -> None:
         with pytest.raises(UnsupportedDeviceError, match="CUDA"):
             Device("cuda")
@@ -33,6 +39,10 @@ class TestDevice:
     def test_unknown_device_raises(self) -> None:
         with pytest.raises(UnsupportedDeviceError, match="Unsupported device"):
             Device("tpu")
+
+    def test_invalid_device_string_on_tensor_raises_domain_error(self) -> None:
+        with pytest.raises(UnsupportedDeviceError):
+            Tensor([1, 2, 3], device="tpu")
 
     def test_tensor_with_cuda_device_raises(self) -> None:
         with pytest.raises(UnsupportedDeviceError, match="CUDA"):

@@ -46,6 +46,13 @@ class TestSliceIndexing:
         assert isinstance(tensor, Tensor)
         assert_tensor_equal(tensor, array[:, 0])
 
+    def test_mixed_row_slice(self) -> None:
+        array = np.arange(12).reshape(3, 4)
+        tensor = Tensor(array)[1:, :]
+        assert isinstance(tensor, Tensor)
+        assert tensor.shape == (2, 4)
+        assert_tensor_equal(tensor, array[1:, :])
+
 
 class TestScalarTensorIndexing:
     def test_scalar_tensor_returns_scalar(self) -> None:

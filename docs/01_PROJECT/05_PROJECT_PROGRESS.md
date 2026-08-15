@@ -121,8 +121,8 @@ Architecture and documentation only until implementation phases complete.
 - [x] Indexing and slicing
 - [x] Arithmetic, broadcasting, and matrix multiplication
 - [x] Reductions and mathematical operations
-- [x] Core through Day 5 testing (256 tests)
-- [ ] Benchmarking
+- [x] Core through Day 6 testing (284 tests)
+- [x] Benchmark baseline (`benchmarks/tensor/run_baseline.py`)
 - [ ] Integration
 
 - [ ] Autograd Engine

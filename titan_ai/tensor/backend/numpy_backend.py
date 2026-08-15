@@ -211,7 +211,7 @@ class NumpyBackend(TensorBackend):
 
     def negate(self, dtype: Dtype) -> "NumpyBackend":
         array = np.negative(self._array, dtype=dtype.to_numpy())
-        return NumpyBackend.from_array(array, self._device)
+        return self._wrap_result(array, dtype)
 
     def matmul(self, other: TensorBackend, dtype: Dtype) -> "NumpyBackend":
         right = self._require_numpy_backend(other, "matmul")
@@ -286,7 +286,7 @@ class NumpyBackend(TensorBackend):
 
     def _unary(self, func: Any, dtype: Dtype) -> "NumpyBackend":
         array = func(self._array, dtype=dtype.to_numpy())
-        return NumpyBackend.from_array(array, self._device)
+        return self._wrap_result(array, dtype)
 
     def _binary(
         self,
@@ -300,7 +300,11 @@ class NumpyBackend(TensorBackend):
             array = ufunc(self._array, right._array, dtype=dtype.to_numpy())
         except ValueError as exc:
             raise InvalidShapeError(f"Invalid {operation} operands: {exc}") from exc
-        return NumpyBackend.from_array(array, self._device)
+        return self._wrap_result(array, dtype)
+
+    def _wrap_result(self, array: Any, dtype: Dtype) -> "NumpyBackend":
+        """Wrap a ufunc result, including 0-d NumPy scalars, as backend storage."""
+        return NumpyBackend.from_array(np.asarray(array, dtype=dtype.to_numpy()), self._device)
 
     def _require_numpy_backend(self, other: TensorBackend, operation: str) -> "NumpyBackend":
         if not isinstance(other, NumpyBackend):
