@@ -65,7 +65,7 @@ NumPy serves as the initial CPU numerical reference backend behind an explicit b
 
 # Public API
 
-**Currently implemented (Day 2–4):**
+**Currently implemented (Day 2–5):**
 
 ```python
 from titan_ai.tensor import Tensor, Device, Dtype
@@ -132,14 +132,29 @@ a / 5
 
 # Matrix multiplication
 a @ b
+
+# Reductions (return a Tensor, including 0-d for full reductions)
+tensor.sum()
+tensor.sum(axis=1)
+tensor.sum(axis=-1, keepdims=True)
+tensor.mean()
+tensor.min()
+tensor.max()
+
+# Mathematical functions
+tensor.abs()
+abs(tensor)
+tensor.sqrt()
+tensor.exp()
+tensor.log()
 ```
 
-**Planned (later Week 1 days):**
+**Planned (later phases, not Day 5):**
 
 ```python
-tensor.sum(...)
-tensor.mean(...)
-tensor.exp()
+tensor.softmax(...)
+tensor.sigmoid()
+tensor.var()
 ```
 
 The public import surface is `titan_ai.tensor`. Backend classes are not part of the primary public API.
@@ -224,6 +239,8 @@ NumPy remains behind the backend; these methods are explicit conversion boundari
 | `numpy(copy=False)` | View when backend supports it |
 | Arithmetic (`+ - * /` and negation) | New storage; does not alias inputs |
 | Matrix multiplication (`@`) | New storage; does not alias inputs |
+| Reductions (`sum`/`mean`/`min`/`max`) | New storage |
+| Math (`abs`/`sqrt`/`exp`/`log`) | New storage |
 
 These semantics are tested and matter for future autograd and performance work.
 
@@ -247,11 +264,11 @@ Metadata is owned by the `Tensor` wrapper and validated at construction and on o
 
 # Backend Architecture
 
-**Currently implemented (Day 2–4):**
+**Currently implemented (Day 2–5):**
 
 ```text
 titan_ai/tensor/
-    core/tensor.py          # Tensor class and operators
+    core/tensor.py          # Tensor class, operators, reduction/math methods
     backend/base.py         # TensorBackend ABC
     backend/numpy_backend.py
     dtypes/dtypes.py
@@ -262,16 +279,14 @@ titan_ai/tensor/
     operations/promotion.py
     operations/arithmetic.py
     operations/matmul.py
-```
-
-The `Tensor` class holds a `TensorBackend` instance and exposes metadata through read-only properties. Public operators dispatch through operation modules to `TensorBackend`. `NumpyBackend` is the only concrete backend.
-
-**Planned (later days):**
-
-```text
+    operations/axis.py
     operations/reductions.py
     operations/math.py
 ```
+
+The `Tensor` class holds a `TensorBackend` instance and exposes metadata through read-only properties. Public operators and methods dispatch through operation modules to `TensorBackend`. `NumpyBackend` is the only concrete backend.
+
+**Planned (later days):** additional math/reduction helpers only when a later phase requires them.
 
 Future GPU backends implement `TensorBackend` without changing the public `Tensor` API.
 
@@ -279,7 +294,7 @@ Future GPU backends implement `TensorBackend` without changing the public `Tenso
 
 # CPU / NumPy Backend
 
-**Status:** foundation implemented (Day 2); arithmetic and matmul primitives implemented (Day 4).
+**Status:** foundation implemented (Day 2); arithmetic, matmul, reductions, and math primitives implemented (Day 5).
 
 `NumpyBackend` stores data in a `numpy.ndarray` and implements `TensorBackend` metadata, shape, indexing, arithmetic, and matmul methods. NumPy is used only behind the backend boundary.
 
@@ -463,21 +478,144 @@ Matmul uses dedicated shape rules, not element-wise broadcasting.
 
 ---
 
-# Arithmetic Memory Semantics
+# Reductions
 
-Arithmetic and matmul allocate **new** backend storage. Results do not alias operand storage. Changing an input array (for example through `copy=False` construction) does not change a previously computed result.
+**Status:** implemented (Day 5).
+
+```python
+tensor.sum(axis=None, *, keepdims=False)
+tensor.mean(axis=None, *, keepdims=False)
+tensor.min(axis=None, *, keepdims=False)
+tensor.max(axis=None, *, keepdims=False)
+```
+
+There is no separate functional namespace (`titan_ai.tensor.sum` is not public).
+
+## Axis semantics
+
+| `axis` | Meaning |
+|--------|---------|
+| `None` (default) | Reduce every element |
+| non-negative `int` | Reduce that dimension (`0` is the first axis) |
+| negative `int` | Count from the end (`-1` is the last axis) |
+
+Tuple axes are **not** supported. Passing a tuple, float, or `bool` raises `InvalidAxisError`. Out-of-range axes (for rank 3: `axis=3` or `axis=-4`) raise `InvalidAxisError`. A 0-d tensor only accepts `axis=None`.
+
+Axis validation is centralized in `operations/axis.py`.
+
+## keepdims
+
+When `keepdims=False` (default), reduced axes are removed.
+
+When `keepdims=True`, reduced axes remain as size `1`.
+
+Example for shape `(2, 3, 4)`:
+
+- `sum(axis=1)` → `(2, 4)`
+- `sum(axis=1, keepdims=True)` → `(2, 1, 4)`
+- `sum(keepdims=True)` → `(1, 1, 1)`
+
+## Scalar reduction results
+
+A full reduction (`axis=None`, `keepdims=False`) returns a **0-dimensional Tensor**, not a Python scalar and not a NumPy scalar.
+
+```text
+shape == ()
+ndim == 0
+size == 1
+```
+
+This matches Day 4 matmul inner-product semantics and keeps a stable object for future autograd. Integer indexing (`tensor[i]`) still returns a Python scalar.
+
+## Reduction dtypes
+
+| Operation | bool / int32 / int64 | float32 | float64 |
+|-----------|----------------------|---------|---------|
+| `sum` | `int64` | `float32` | `float64` |
+| `mean` | `float64` | `float32` | `float64` |
+| `min` / `max` | input dtype preserved | `float32` | `float64` |
+
+`mean` never returns an integer dtype. Integer `sum` uses `int64` to reduce overflow risk relative to `int32`.
+
+## Empty reductions
+
+Zero-sized dimensions are valid Tensor shapes (for example `(0,)` or `(2, 0)`).
+
+A reduction is empty when the reduced axis (or the full size when `axis=None`) has length `0`.
+
+| Operation | Empty reduction |
+|-----------|-----------------|
+| `sum` | Defined: identity `0` (as `int64` or the floating sum dtype) |
+| `mean` | **Rejected** — `TensorValidationError` |
+| `min` / `max` | **Rejected** — `TensorValidationError` |
+
+Titan does not return NumPy `nan` for an empty mean, and does not leak NumPy `ValueError` for empty min/max. Reducing a non-empty axis of a tensor that is empty in another dimension remains valid (for example `min` of shape `(0, 3)` along `axis=1` yields shape `(0,)`).
+
+**Not implemented:** `argmin`, `argmax`, `var`, `std`, `norm`, cumulative reductions.
 
 ---
 
-# NumPy Reference Strategy (Day 4)
+# Mathematical Functions
+
+**Status:** implemented (Day 5).
+
+```python
+tensor.abs()  # also abs(tensor)
+tensor.sqrt()
+tensor.exp()
+tensor.log()
+```
+
+All four return a new Tensor with the same shape and device. Inputs are not mutated.
+
+## Math dtypes
+
+| Operation | bool / int32 / int64 | float32 | float64 |
+|-----------|----------------------|---------|---------|
+| `abs` | input dtype preserved | `float32` | `float64` |
+| `sqrt` / `exp` / `log` | `float64` | `float32` | `float64` |
+
+Complex dtypes are not supported.
+
+## Numerical edge cases
+
+Titan preserves NumPy's real floating-point results and **does not suppress** NumPy runtime warnings:
+
+| Input | Result | Typical warning |
+|-------|--------|-----------------|
+| `sqrt` of a negative real | `nan` | invalid value |
+| `log(0)` | `-inf` | divide by zero |
+| `log` of a negative real | `nan` | invalid value |
+| `exp` of a very large value | `inf` | overflow |
+
+No clipping, no complex branch, no Titan-level exception for these IEEE cases.
+
+**Not implemented:** `softmax`, `sigmoid`, `tanh`, `relu`, and other activations.
+
+---
+
+# Arithmetic Memory Semantics
+
+Arithmetic, matmul, reductions, and mathematical functions allocate **new** backend storage. Results do not alias operand storage. Changing an input array (for example through `copy=False` construction) does not change a previously computed result.
+
+---
+
+# NumPy Reference Strategy (Day 4–5)
 
 NumPy is the CPU numerical reference, not the public API.
 
-Tests compare Titan results to the equivalent NumPy expression for representative integers, `float32`, `float64`, scalars, vectors, matrices, and broadcasted shapes. Floating-point comparisons use dtype-appropriate tolerances.
+Tests compare Titan results to the equivalent NumPy expression for representative integers, `float32`, `float64`, scalars, vectors, matrices, broadcasted shapes, reductions, and math functions. Floating-point comparisons use dtype-appropriate tolerances.
 
 This is **not** a claim of full NumPy API compatibility.
 
-Floating-point division by zero follows NumPy: `inf` / `nan` values, typically with a NumPy runtime warning rather than a Titan exception.
+Intentional Titan differences from NumPy include:
+
+- empty `mean` / `min` / `max` raise `TensorValidationError` instead of `nan` or a raw NumPy error
+- integer `sum` always uses Titan `int64` (not platform `intp` as a public type)
+- no tuple-axis reductions
+- boolean negation/matmul still promote to `int64` (Day 4)
+
+Floating-point division by zero, `sqrt` of negatives, `log` of non-positives, and `exp` overflow follow NumPy: `inf` / `nan` plus a runtime warning, not a Titan exception.
 
 ---
 
@@ -531,7 +669,7 @@ Autograd belongs to a subsequent phase after the CPU tensor foundation is correc
 | `DeviceMismatchError` | Tensor operands on different devices |
 | `UnsupportedOperandError` | Operand type is not a Tensor or supported scalar |
 
-Metadata properties (`shape`, `dtype`, `device`, `ndim`, `size`) are read-only Python properties without setters. Result metadata after arithmetic is derived from the backend result, not reconstructed independently.
+Metadata properties (`shape`, `dtype`, `device`, `ndim`, `size`) are read-only Python properties without setters. Result metadata after arithmetic, reductions, and math is derived from the backend result, not reconstructed independently. Empty `mean`/`min`/`max` raise `TensorValidationError`. Invalid reduction axes raise `InvalidAxisError`.
 
 ---
 
@@ -547,9 +685,9 @@ Metadata properties (`shape`, `dtype`, `device`, `ndim`, `size`) are read-only P
 
 # Testing Strategy
 
-**Currently implemented (Day 4):** 199 unit tests under `tests/ai/tensor/` covering construction, metadata, dtypes, devices, factories, shape ops, indexing, arithmetic, broadcasting, dtype promotion, matmul, exceptions, storage ownership, and public API imports.
+**Currently implemented (Day 5):** 256 unit tests under `tests/ai/tensor/` covering construction, metadata, dtypes, devices, factories, shape ops, indexing, arithmetic, broadcasting, dtype promotion, matmul, reductions, mathematical functions, exceptions, storage ownership, and public API imports.
 
-**Planned coverage (later days):** reductions, mathematical functions.
+**Planned coverage (later days):** broader API hardening, benchmarks.
 
 ---
 
@@ -643,7 +781,7 @@ Each layer depends on a stable, tested tensor foundation.
 | Indexing / slicing | Documented | Implemented | Tested | — |
 | Arithmetic / broadcasting | Documented | Implemented | Tested | — |
 | Matrix multiplication | Documented | Implemented (1D/2D) | Tested | — |
-| Reductions / math ops | Documented | Not started | Not started | Not started |
+| Reductions / math ops | Documented | Implemented | Tested | — |
 | Error types (core) | Documented | Implemented | Tested | — |
 
 This table must be updated as implementation progresses. Do not mark items complete until the project's completion criteria are met.

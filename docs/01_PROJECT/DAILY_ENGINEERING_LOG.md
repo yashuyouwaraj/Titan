@@ -463,3 +463,91 @@ Day 4 — Implement the first numerical computation layer: element-wise arithmet
 ### Next Engineering Goal
 
 Day 5 — Reductions and mathematical operations.
+
+---
+
+## Date
+
+2026-08-15
+
+---
+
+### Session Goal
+
+Day 5 — Implement Tensor reductions (`sum`, `mean`, `min`, `max`) and mathematical functions (`abs`, `sqrt`, `exp`, `log`) with axis/keepdims handling, explicit dtype semantics, and NumPy numerical parity. No activations, autograd, or GPU.
+
+---
+
+### Completed Work
+
+- Reduction methods with `axis=None`, integer axes (including negative), and `keepdims`
+- Centralized axis validation (`InvalidAxisError`)
+- 0-d Tensor results for full reductions
+- Explicit reduction and math dtype rules
+- Empty-reduction policy: `sum` is 0; `mean`/`min`/`max` raise `TensorValidationError`
+- `abs` (including `abs(tensor)`), `sqrt`, `exp`, `log` via backend dispatch
+- 57 new tests (256 total, all passing)
+- Tensor documentation, progress, and `.ai` status updated
+
+---
+
+### Research Performed
+
+- NumPy reduction axis, keepdims, and empty-array behavior
+- NumPy integer sum promotion vs Titan's five-dtype model
+- IEEE behavior for `sqrt`/`log`/`exp` edge cases and runtime warnings
+
+---
+
+### Engineering Decisions
+
+- Full reductions return 0-d Tensors, consistent with Day 4 inner-product matmul
+- Single integer axis only; no tuple-axis API
+- Integer/bool `sum` → `int64`; `mean` always floating (`float32` stays `float32`)
+- `min`/`max`/`abs` preserve input dtype
+- `sqrt`/`exp`/`log` of integers → `float64`; float32 stays float32
+- Empty mean/min/max are errors, not silent `nan`
+- NumPy warnings for invalid/overflow math are preserved, not suppressed
+- Operation modules remain wrap-friendly for later autograd
+
+---
+
+### Problems Encountered
+
+- NumPy empty `mean` returns `nan` with a warning; empty `min`/`max` raise raw `ValueError`
+- Boolean `abs` must not silently change dtype
+
+---
+
+### Solutions
+
+- Validate empty reductions at the Tensor boundary before backend min/max/mean
+- Pass an explicit result dtype into the backend unary `abs`
+
+---
+
+### Lessons Learned
+
+- Empty reductions need an explicit identity-vs-undefined policy; copying NumPy's mixed behavior is worse than a Tensor-level error
+- Axis validation must reject `bool` because it is a subclass of `int`
+
+---
+
+### Performance Notes
+
+- None (no benchmarks on Day 5)
+
+---
+
+### Documentation Updated
+
+- `docs/04_AI/19_TENSOR_LIBRARY.md`
+- `docs/01_PROJECT/05_PROJECT_PROGRESS.md`
+- `docs/01_PROJECT/DAILY_ENGINEERING_LOG.md`
+- `.ai/titan-ai.json`
+
+---
+
+### Next Engineering Goal
+
+Day 6 — Tensor library hardening, testing, benchmarks, and API review.

@@ -224,6 +224,70 @@ class NumpyBackend(TensorBackend):
         array = np.asarray(array, dtype=dtype.to_numpy())
         return NumpyBackend.from_array(array, self._device)
 
+    def reduce_sum(
+        self,
+        axis: int | None,
+        keepdims: bool,
+        dtype: Dtype,
+    ) -> "NumpyBackend":
+        array = np.sum(self._array, axis=axis, keepdims=keepdims, dtype=dtype.to_numpy())
+        return NumpyBackend.from_array(np.asarray(array, dtype=dtype.to_numpy()), self._device)
+
+    def reduce_mean(
+        self,
+        axis: int | None,
+        keepdims: bool,
+        dtype: Dtype,
+    ) -> "NumpyBackend":
+        array = np.mean(self._array, axis=axis, keepdims=keepdims, dtype=dtype.to_numpy())
+        return NumpyBackend.from_array(np.asarray(array, dtype=dtype.to_numpy()), self._device)
+
+    def reduce_min(
+        self,
+        axis: int | None,
+        keepdims: bool,
+        dtype: Dtype,
+    ) -> "NumpyBackend":
+        return self._minmax(np.min, axis, keepdims, dtype, "min")
+
+    def reduce_max(
+        self,
+        axis: int | None,
+        keepdims: bool,
+        dtype: Dtype,
+    ) -> "NumpyBackend":
+        return self._minmax(np.max, axis, keepdims, dtype, "max")
+
+    def abs(self, dtype: Dtype) -> "NumpyBackend":
+        return self._unary(np.abs, dtype)
+
+    def sqrt(self, dtype: Dtype) -> "NumpyBackend":
+        return self._unary(np.sqrt, dtype)
+
+    def exp(self, dtype: Dtype) -> "NumpyBackend":
+        return self._unary(np.exp, dtype)
+
+    def log(self, dtype: Dtype) -> "NumpyBackend":
+        return self._unary(np.log, dtype)
+
+    def _minmax(
+        self,
+        func: Any,
+        axis: int | None,
+        keepdims: bool,
+        dtype: Dtype,
+        operation: str,
+    ) -> "NumpyBackend":
+        try:
+            array = func(self._array, axis=axis, keepdims=keepdims)
+        except ValueError as exc:
+            raise TensorValidationError(f"Cannot compute {operation}: {exc}") from exc
+        return NumpyBackend.from_array(np.asarray(array, dtype=dtype.to_numpy()), self._device)
+
+    def _unary(self, func: Any, dtype: Dtype) -> "NumpyBackend":
+        array = func(self._array, dtype=dtype.to_numpy())
+        return NumpyBackend.from_array(array, self._device)
+
     def _binary(
         self,
         ufunc: Any,

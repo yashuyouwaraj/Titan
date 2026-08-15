@@ -120,8 +120,8 @@ Architecture and documentation only until implementation phases complete.
 - [x] Shape operations (reshape, transpose, flatten, squeeze, unsqueeze)
 - [x] Indexing and slicing
 - [x] Arithmetic, broadcasting, and matrix multiplication
-- [ ] Reductions and mathematical operations
-- [x] Core, Day 3, and Day 4 testing (199 tests)
+- [x] Reductions and mathematical operations
+- [x] Core through Day 5 testing (256 tests)
 - [ ] Benchmarking
 - [ ] Integration
 

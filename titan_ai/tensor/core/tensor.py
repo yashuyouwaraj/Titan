@@ -295,6 +295,54 @@ class Tensor:
         """Insert a singleton dimension at the given axis."""
         return Tensor._from_backend(self._backend.unsqueeze(axis=axis))
 
+    def sum(self, axis: int | None = None, *, keepdims: bool = False) -> "Tensor":
+        """Return the sum of elements over the selected axis."""
+        from titan_ai.tensor.operations.reductions import reduce_sum
+
+        return reduce_sum(self, axis=axis, keepdims=keepdims)
+
+    def mean(self, axis: int | None = None, *, keepdims: bool = False) -> "Tensor":
+        """Return the mean of elements over the selected axis."""
+        from titan_ai.tensor.operations.reductions import reduce_mean
+
+        return reduce_mean(self, axis=axis, keepdims=keepdims)
+
+    def min(self, axis: int | None = None, *, keepdims: bool = False) -> "Tensor":
+        """Return the minimum of elements over the selected axis."""
+        from titan_ai.tensor.operations.reductions import reduce_min
+
+        return reduce_min(self, axis=axis, keepdims=keepdims)
+
+    def max(self, axis: int | None = None, *, keepdims: bool = False) -> "Tensor":
+        """Return the maximum of elements over the selected axis."""
+        from titan_ai.tensor.operations.reductions import reduce_max
+
+        return reduce_max(self, axis=axis, keepdims=keepdims)
+
+    def abs(self) -> "Tensor":
+        """Return the element-wise absolute value."""
+        from titan_ai.tensor.operations.math import abs_values
+
+        return abs_values(self)
+
+    def sqrt(self) -> "Tensor":
+        """Return the element-wise square root."""
+        from titan_ai.tensor.operations.math import sqrt
+
+        return sqrt(self)
+
+    def exp(self) -> "Tensor":
+        """Return the element-wise exponential."""
+        from titan_ai.tensor.operations.math import exp
+
+        return exp(self)
+
+    def log(self) -> "Tensor":
+        """Return the element-wise natural logarithm."""
+        from titan_ai.tensor.operations.math import log
+
+        return log(self)
+
     def numpy(self, copy: bool = True) -> np.ndarray:
         """Return the tensor data as a NumPy array.
 
@@ -359,6 +407,11 @@ class Tensor:
         from titan_ai.tensor.operations.arithmetic import negate
 
         return negate(self)
+
+    def __abs__(self) -> "Tensor":
+        from titan_ai.tensor.operations.math import abs_values
+
+        return abs_values(self)
 
     def __matmul__(self, other: Any) -> "Tensor":
         from titan_ai.tensor.operations.matmul import matmul

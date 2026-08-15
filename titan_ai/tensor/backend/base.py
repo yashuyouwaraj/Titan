@@ -91,3 +91,55 @@ class TensorBackend(ABC):
     @abstractmethod
     def matmul(self, other: "TensorBackend", dtype: Dtype) -> "TensorBackend":
         """Return matrix multiplication with ``other`` using ``dtype``."""
+
+    @abstractmethod
+    def reduce_sum(
+        self,
+        axis: int | None,
+        keepdims: bool,
+        dtype: Dtype,
+    ) -> "TensorBackend":
+        """Return the sum over ``axis`` using ``dtype``."""
+
+    @abstractmethod
+    def reduce_mean(
+        self,
+        axis: int | None,
+        keepdims: bool,
+        dtype: Dtype,
+    ) -> "TensorBackend":
+        """Return the mean over ``axis`` using ``dtype``."""
+
+    @abstractmethod
+    def reduce_min(
+        self,
+        axis: int | None,
+        keepdims: bool,
+        dtype: Dtype,
+    ) -> "TensorBackend":
+        """Return the minimum over ``axis`` using ``dtype``."""
+
+    @abstractmethod
+    def reduce_max(
+        self,
+        axis: int | None,
+        keepdims: bool,
+        dtype: Dtype,
+    ) -> "TensorBackend":
+        """Return the maximum over ``axis`` using ``dtype``."""
+
+    @abstractmethod
+    def abs(self, dtype: Dtype) -> "TensorBackend":
+        """Return the element-wise absolute value using ``dtype``."""
+
+    @abstractmethod
+    def sqrt(self, dtype: Dtype) -> "TensorBackend":
+        """Return the element-wise square root using ``dtype``."""
+
+    @abstractmethod
+    def exp(self, dtype: Dtype) -> "TensorBackend":
+        """Return the element-wise exponential using ``dtype``."""
+
+    @abstractmethod
+    def log(self, dtype: Dtype) -> "TensorBackend":
+        """Return the element-wise natural logarithm using ``dtype``."""
