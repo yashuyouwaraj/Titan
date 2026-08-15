@@ -315,5 +315,55 @@ class Tensor:
             return Tensor._from_backend(result)
         return result
 
+    def __add__(self, other: Any) -> "Tensor":
+        from titan_ai.tensor.operations.arithmetic import add
+
+        return add(self, other)
+
+    def __radd__(self, other: Any) -> "Tensor":
+        from titan_ai.tensor.operations.arithmetic import add
+
+        return add(self, other)
+
+    def __sub__(self, other: Any) -> "Tensor":
+        from titan_ai.tensor.operations.arithmetic import subtract
+
+        return subtract(self, other)
+
+    def __rsub__(self, other: Any) -> "Tensor":
+        from titan_ai.tensor.operations.arithmetic import reverse_subtract
+
+        return reverse_subtract(self, other)
+
+    def __mul__(self, other: Any) -> "Tensor":
+        from titan_ai.tensor.operations.arithmetic import multiply
+
+        return multiply(self, other)
+
+    def __rmul__(self, other: Any) -> "Tensor":
+        from titan_ai.tensor.operations.arithmetic import multiply
+
+        return multiply(self, other)
+
+    def __truediv__(self, other: Any) -> "Tensor":
+        from titan_ai.tensor.operations.arithmetic import true_divide
+
+        return true_divide(self, other)
+
+    def __rtruediv__(self, other: Any) -> "Tensor":
+        from titan_ai.tensor.operations.arithmetic import reverse_true_divide
+
+        return reverse_true_divide(self, other)
+
+    def __neg__(self) -> "Tensor":
+        from titan_ai.tensor.operations.arithmetic import negate
+
+        return negate(self)
+
+    def __matmul__(self, other: Any) -> "Tensor":
+        from titan_ai.tensor.operations.matmul import matmul
+
+        return matmul(self, other)
+
     def __repr__(self) -> str:
         return f"Tensor(shape={self.shape}, dtype={self.dtype.name}, device={self.device!r})"

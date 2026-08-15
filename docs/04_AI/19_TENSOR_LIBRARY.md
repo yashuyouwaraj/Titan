@@ -65,7 +65,7 @@ NumPy serves as the initial CPU numerical reference backend behind an explicit b
 
 # Public API
 
-**Currently implemented (Day 2–3):**
+**Currently implemented (Day 2–4):**
 
 ```python
 from titan_ai.tensor import Tensor, Device, Dtype
@@ -110,18 +110,36 @@ tensor[:, 0]
 tensor[1, 2]
 
 # NumPy boundary
-array = tensor.numpy()        # copy by default
+array = tensor.numpy()  # copy by default
 view = tensor.numpy(copy=False)
 
 # Indexing returns Tensor for array-like results, Python scalar for scalars
+
+# Element-wise arithmetic (returns a new Tensor)
+a + b
+a + 5
+5 + a
+a - b
+a - 5
+5 - a
+a * b  # element-wise, not matrix multiplication
+a * 5
+5 * a
+a / b  # true division
+a / 5
+5 / a
+-a
+
+# Matrix multiplication
+a @ b
 ```
 
 **Planned (later Week 1 days):**
 
 ```python
-tensor + tensor
-tensor.matmul(...)
 tensor.sum(...)
+tensor.mean(...)
+tensor.exp()
 ```
 
 The public import surface is `titan_ai.tensor`. Backend classes are not part of the primary public API.
@@ -204,6 +222,8 @@ NumPy remains behind the backend; these methods are explicit conversion boundari
 | Integer indexing | Scalar value, no tensor storage |
 | `numpy(copy=True)` | Copy |
 | `numpy(copy=False)` | View when backend supports it |
+| Arithmetic (`+ - * /` and negation) | New storage; does not alias inputs |
+| Matrix multiplication (`@`) | New storage; does not alias inputs |
 
 These semantics are tested and matter for future autograd and performance work.
 
@@ -227,27 +247,30 @@ Metadata is owned by the `Tensor` wrapper and validated at construction and on o
 
 # Backend Architecture
 
-**Currently implemented (Day 2):**
+**Currently implemented (Day 2–4):**
 
 ```text
 titan_ai/tensor/
-    core/tensor.py          # Tensor class
+    core/tensor.py          # Tensor class and operators
     backend/base.py         # TensorBackend ABC
     backend/numpy_backend.py
     dtypes/dtypes.py
     devices/devices.py
     exceptions/errors.py
+    operations/shape.py
+    operations/broadcast.py
+    operations/promotion.py
+    operations/arithmetic.py
+    operations/matmul.py
 ```
 
-The `Tensor` class holds a `TensorBackend` instance and exposes metadata through read-only properties. `NumpyBackend` is the only concrete backend.
+The `Tensor` class holds a `TensorBackend` instance and exposes metadata through read-only properties. Public operators dispatch through operation modules to `TensorBackend`. `NumpyBackend` is the only concrete backend.
 
 **Planned (later days):**
 
 ```text
-    creation/
-    indexing/
-    operations/
-    reductions/
+    operations/reductions.py
+    operations/math.py
 ```
 
 Future GPU backends implement `TensorBackend` without changing the public `Tensor` API.
@@ -256,9 +279,9 @@ Future GPU backends implement `TensorBackend` without changing the public `Tenso
 
 # CPU / NumPy Backend
 
-**Status:** foundation implemented (Day 2).
+**Status:** foundation implemented (Day 2); arithmetic and matmul primitives implemented (Day 4).
 
-`NumpyBackend` stores data in a `numpy.ndarray` and implements `TensorBackend` metadata properties. NumPy is used only behind the backend boundary.
+`NumpyBackend` stores data in a `numpy.ndarray` and implements `TensorBackend` metadata, shape, indexing, arithmetic, and matmul methods. NumPy is used only behind the backend boundary.
 
 Construction from array-like data flows through `NumpyBackend.from_data`, which handles dtype conversion and copy semantics.
 
@@ -313,18 +336,148 @@ CUDA support will not be claimed in documentation or API until implemented and t
 
 ---
 
-# Broadcasting Strategy
+# Arithmetic Operators
 
-**Currently implemented:** none.
+**Status:** implemented (Day 4).
 
-**Planned semantics (NumPy-compatible):**
+| Operator | Meaning |
+|----------|---------|
+| `a + b` / `__radd__` | Element-wise addition |
+| `a - b` / `__rsub__` | Element-wise subtraction |
+| `a * b` / `__rmul__` | Element-wise multiplication |
+| `a / b` / `__rtruediv__` | Element-wise true division |
+| `-a` | Unary negation |
+| `a @ b` | Matrix multiplication |
 
-1. Compare shapes from trailing dimensions forward
-2. Dimensions are compatible when equal, or when one is `1`
-3. Scalars broadcast to any shape
-4. Incompatible dimensions raise `BroadcastError` with both shapes in the message
+Every operator returns a **new** `Tensor`. Operands are not mutated.
 
-Incorrect broadcasting must never silently produce wrong numerical results.
+Supported scalar operands: Python `bool`, `int`, `float`, and NumPy scalars whose dtype maps to a Titan `Dtype`. Lists, strings, and other objects raise `UnsupportedOperandError`.
+
+`*` is never matrix multiplication. Use `@` for matmul.
+
+**Not implemented:** `__pow__`, `__mod__`, `__floordiv__`, comparisons, logical operators, in-place operators.
+
+---
+
+# Broadcasting
+
+**Status:** implemented (Day 4) for element-wise arithmetic.
+
+Rules (NumPy-compatible, validated before backend execution):
+
+1. Compare dimensions from the trailing axis.
+2. Dimensions are compatible when they are equal, or when either is `1`.
+3. A scalar (shape `()` or a Python/NumPy scalar) broadcasts to any shape.
+4. The output shape takes the non-`1` size in each aligned dimension.
+5. Incompatible shapes raise `BroadcastError` with both operand shapes.
+
+Examples:
+
+| Operands | Result shape |
+|----------|----------------|
+| `(3,)` + `(3,)` | `(3,)` |
+| `(2, 3)` + `(3,)` | `(2, 3)` |
+| `(2, 3)` + `(1, 3)` | `(2, 3)` |
+| `(2, 1)` + `(1, 4)` | `(2, 4)` |
+| scalar + `(2, 3)` | `(2, 3)` |
+| `(2, 3)` + `(2, 4)` | `BroadcastError` |
+
+Broadcasting is implemented once in `operations/broadcast.py` and shared by add, subtract, multiply, and divide. Matrix multiplication does **not** use this mechanism.
+
+---
+
+# Dtype Promotion
+
+**Status:** implemented (Day 4). Deterministic Titan rules for the five supported dtypes.
+
+## Tensor / Tensor
+
+| | bool | int32 | int64 | float32 | float64 |
+|---|------|-------|-------|---------|---------|
+| **bool** | bool | int32 | int64 | float32 | float64 |
+| **int32** | int32 | int32 | int64 | float64 | float64 |
+| **int64** | int64 | int64 | int64 | float64 | float64 |
+| **float32** | float32 | float64 | float64 | float32 | float64 |
+| **float64** | float64 | float64 | float64 | float64 | float64 |
+
+Mixed integer and `float32` promote to `float64` so integer magnitude is not rounded through `float32`. This matches NumPy `result_type` for this dtype subset.
+
+## Tensor / Python scalar (weak scalars)
+
+Python scalars do not force a wider dtype when the tensor already has a compatible kind:
+
+- `int32 + 1` → `int32`
+- `float32 + 1` → `float32`
+- `float32 + 1.0` → `float32`
+- `int32 + 1.0` → `float64`
+- `bool + 1` → `int64`
+
+## Tensor / NumPy scalar (strong scalars)
+
+NumPy scalars use the Tensor/Tensor table. Example: `float32 + np.float64(1.0)` → `float64`.
+
+## True division
+
+After the arithmetic promotion above:
+
+- If the result would be `bool`, `int32`, or `int64`, the division dtype is `float64`.
+- `float32 / float32` remains `float32`.
+- `float64` stays `float64`.
+
+Integer true division therefore never silently truncates.
+
+## Unary negation
+
+Shape and device are preserved. `bool` tensors promote to `int64` (`True` → `-1`) because Titan does not provide NumPy's `int8` result for boolean negation.
+
+---
+
+# Device Compatibility
+
+**Status:** implemented (Day 4) for CPU.
+
+- Both operands of a Tensor/Tensor operation must be on the same device.
+- Day 4 only supports `cpu`.
+- Device mismatch raises `DeviceMismatchError`.
+- An unsupported device raises `UnsupportedDeviceError`.
+- Titan **never** silently moves data between devices.
+
+---
+
+# Matrix Multiplication
+
+**Status:** implemented (Day 4) for 1D and 2D tensors.
+
+| Operands | Result |
+|----------|--------|
+| `(K,) @ (K,)` | `()` scalar tensor (inner product) |
+| `(M, K) @ (K, N)` | `(M, N)` |
+| `(K,) @ (K, N)` | `(N,)` |
+| `(M, K) @ (K,)` | `(M,)` |
+
+Incompatible inner dimensions raise `InvalidShapeError` with both shapes. Rank 0 (scalar tensors) and rank > 2 are rejected; batched N-D matmul is planned, not implemented.
+
+Boolean operands promote to `int64` before multiplication.
+
+Matmul uses dedicated shape rules, not element-wise broadcasting.
+
+---
+
+# Arithmetic Memory Semantics
+
+Arithmetic and matmul allocate **new** backend storage. Results do not alias operand storage. Changing an input array (for example through `copy=False` construction) does not change a previously computed result.
+
+---
+
+# NumPy Reference Strategy (Day 4)
+
+NumPy is the CPU numerical reference, not the public API.
+
+Tests compare Titan results to the equivalent NumPy expression for representative integers, `float32`, `float64`, scalars, vectors, matrices, and broadcasted shapes. Floating-point comparisons use dtype-appropriate tolerances.
+
+This is **not** a claim of full NumPy API compatibility.
+
+Floating-point division by zero follows NumPy: `inf` / `nan` values, typically with a NumPy runtime warning rather than a Titan exception.
 
 ---
 
@@ -362,7 +515,7 @@ Autograd belongs to a subsequent phase after the CPU tensor foundation is correc
 
 # Error Handling Strategy
 
-**Implemented (Day 2–3):**
+**Implemented (Day 2–4):**
 
 | Exception | When |
 |-----------|------|
@@ -371,13 +524,14 @@ Autograd belongs to a subsequent phase after the CPU tensor foundation is correc
 | `TensorValidationError` | Validation failures |
 | `UnsupportedDeviceError` | Unsupported device (including CUDA in Week 1) |
 | `UnsupportedDtypeError` | Unsupported or unmapped dtype |
-| `InvalidShapeError` | Invalid or incompatible shape |
+| `InvalidShapeError` | Invalid or incompatible shape, including matmul ranks/dims |
 | `InvalidAxisError` | Invalid axis for shape operations |
 | `TensorIndexError` | Invalid indexing |
+| `BroadcastError` | Incompatible element-wise broadcast shapes |
+| `DeviceMismatchError` | Tensor operands on different devices |
+| `UnsupportedOperandError` | Operand type is not a Tensor or supported scalar |
 
-**Planned (later days):** broadcast error, operation-specific errors.
-
-Metadata properties (`shape`, `dtype`, `device`, `ndim`, `size`) are read-only Python properties without setters.
+Metadata properties (`shape`, `dtype`, `device`, `ndim`, `size`) are read-only Python properties without setters. Result metadata after arithmetic is derived from the backend result, not reconstructed independently.
 
 ---
 
@@ -393,9 +547,9 @@ Metadata properties (`shape`, `dtype`, `device`, `ndim`, `size`) are read-only P
 
 # Testing Strategy
 
-**Currently implemented (Day 3):** 98 unit tests under `tests/ai/tensor/` covering construction, metadata, dtypes, devices, factories, shape ops, indexing, exceptions, storage ownership, and public API imports.
+**Currently implemented (Day 4):** 199 unit tests under `tests/ai/tensor/` covering construction, metadata, dtypes, devices, factories, shape ops, indexing, arithmetic, broadcasting, dtype promotion, matmul, exceptions, storage ownership, and public API imports.
 
-**Planned coverage (later days):** arithmetic, broadcasting, matmul, reductions, math ops.
+**Planned coverage (later days):** reductions, mathematical functions.
 
 ---
 
@@ -487,7 +641,8 @@ Each layer depends on a stable, tested tensor foundation.
 | Factory methods | Documented | Implemented | Tested | — |
 | Shape operations | Documented | Implemented | Tested | — |
 | Indexing / slicing | Documented | Implemented | Tested | — |
-| Arithmetic / broadcasting | Documented | Not started | Not started | — |
+| Arithmetic / broadcasting | Documented | Implemented | Tested | — |
+| Matrix multiplication | Documented | Implemented (1D/2D) | Tested | — |
 | Reductions / math ops | Documented | Not started | Not started | Not started |
 | Error types (core) | Documented | Implemented | Tested | — |
 

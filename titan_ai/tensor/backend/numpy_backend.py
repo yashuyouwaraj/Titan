@@ -196,3 +196,51 @@ class NumpyBackend(TensorBackend):
         if isinstance(result, np.generic):
             return result.item()
         return result
+
+    def add(self, other: TensorBackend, dtype: Dtype) -> "NumpyBackend":
+        return self._binary(np.add, other, dtype, "add")
+
+    def subtract(self, other: TensorBackend, dtype: Dtype) -> "NumpyBackend":
+        return self._binary(np.subtract, other, dtype, "subtract")
+
+    def multiply(self, other: TensorBackend, dtype: Dtype) -> "NumpyBackend":
+        return self._binary(np.multiply, other, dtype, "multiply")
+
+    def true_divide(self, other: TensorBackend, dtype: Dtype) -> "NumpyBackend":
+        return self._binary(np.divide, other, dtype, "divide")
+
+    def negate(self, dtype: Dtype) -> "NumpyBackend":
+        array = np.negative(self._array, dtype=dtype.to_numpy())
+        return NumpyBackend.from_array(array, self._device)
+
+    def matmul(self, other: TensorBackend, dtype: Dtype) -> "NumpyBackend":
+        right = self._require_numpy_backend(other, "matmul")
+        left_array = np.asarray(self._array, dtype=dtype.to_numpy())
+        right_array = np.asarray(right._array, dtype=dtype.to_numpy())
+        try:
+            array = np.matmul(left_array, right_array)
+        except ValueError as exc:
+            raise InvalidShapeError(f"Invalid matrix multiplication: {exc}") from exc
+        array = np.asarray(array, dtype=dtype.to_numpy())
+        return NumpyBackend.from_array(array, self._device)
+
+    def _binary(
+        self,
+        ufunc: Any,
+        other: TensorBackend,
+        dtype: Dtype,
+        operation: str,
+    ) -> "NumpyBackend":
+        right = self._require_numpy_backend(other, operation)
+        try:
+            array = ufunc(self._array, right._array, dtype=dtype.to_numpy())
+        except ValueError as exc:
+            raise InvalidShapeError(f"Invalid {operation} operands: {exc}") from exc
+        return NumpyBackend.from_array(array, self._device)
+
+    def _require_numpy_backend(self, other: TensorBackend, operation: str) -> "NumpyBackend":
+        if not isinstance(other, NumpyBackend):
+            raise TensorValidationError(
+                f"NumpyBackend cannot {operation} with {type(other).__name__}."
+            )
+        return other

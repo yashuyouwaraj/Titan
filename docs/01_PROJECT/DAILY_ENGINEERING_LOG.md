@@ -372,3 +372,94 @@ Day 3 — Implement Tensor factory methods, shape operations, indexing, slicing,
 ### Next Engineering Goal
 
 Day 4 — Arithmetic, broadcasting, and matrix multiplication.
+
+---
+
+## Date
+
+2026-08-15
+
+---
+
+### Session Goal
+
+Day 4 — Implement the first numerical computation layer: element-wise arithmetic, scalar arithmetic, broadcasting, dtype promotion, CPU device validation, and matrix multiplication. No reductions, math functions, autograd, or GPU.
+
+---
+
+### Completed Work
+
+- Element-wise `+`, `-`, `*`, `/` for Tensor/Tensor, Tensor/scalar, and scalar/Tensor
+- Unary negation
+- Centralized NumPy-compatible broadcasting validation (`BroadcastError`)
+- Deterministic dtype promotion for bool/int32/int64/float32/float64
+- True division always yields a floating dtype (`float32` or `float64`)
+- 1D and 2D matrix multiplication via `@`, with inner-dimension validation
+- Backend arithmetic and matmul methods on `TensorBackend` / `NumpyBackend`
+- 101 new tests (199 total, all passing)
+- Tensor documentation, progress, and `.ai` status updated
+
+---
+
+### Research Performed
+
+- NumPy broadcasting (trailing-axis alignment, singleton expansion)
+- NumPy dtype promotion for the five Titan dtypes, including weak Python scalars vs strong NumPy scalars
+- NumPy true-division and divide-by-zero (`inf`/`nan` plus runtime warnings)
+- NumPy `matmul` ranks: 1D inner product, 2D GEMM, mixed 1D/2D
+
+---
+
+### Engineering Decisions
+
+- Public Tensor operators dispatch through `operations/` modules to the backend; NumPy is not used as the public API
+- Element-wise broadcasting is shared; matmul uses separate shape rules
+- Python scalars are weak; NumPy scalars are strong
+- Mixed `int32`/`float32` promotes to `float64` (precision)
+- Integer true division promotes to `float64`
+- Boolean negation and boolean matmul promote to `int64` (Titan has no `int8`)
+- Matmul limited to 1D/2D rather than incomplete N-D batched matmul
+- Results always allocate new storage
+- No autograd graph; operation functions remain wrap-friendly for later intercept
+
+---
+
+### Problems Encountered
+
+- Reverse subtraction/division must compute `scalar - tensor`, not `tensor - scalar`
+- Boolean unary minus in NumPy yields `int8`, which Titan does not support
+
+---
+
+### Solutions
+
+- Dedicated `reverse_subtract` and `reverse_true_divide` dispatch
+- Documented and tested `int64` promotion for boolean negation and boolean matmul
+
+---
+
+### Lessons Learned
+
+- Validation must live at the Tensor boundary so NumPy errors are not the public API
+- Weak vs strong scalars must be explicit or scalar `float32` arithmetic silently widens
+
+---
+
+### Performance Notes
+
+- None (no benchmarks on Day 4; NumPy CPU backend only)
+
+---
+
+### Documentation Updated
+
+- `docs/04_AI/19_TENSOR_LIBRARY.md`
+- `docs/01_PROJECT/05_PROJECT_PROGRESS.md`
+- `docs/01_PROJECT/DAILY_ENGINEERING_LOG.md`
+- `.ai/titan-ai.json`
+
+---
+
+### Next Engineering Goal
+
+Day 5 — Reductions and mathematical operations.

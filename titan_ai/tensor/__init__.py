@@ -4,6 +4,8 @@ from titan_ai.tensor.core.tensor import Tensor
 from titan_ai.tensor.devices.devices import Device
 from titan_ai.tensor.dtypes.dtypes import Dtype
 from titan_ai.tensor.exceptions.errors import (
+    BroadcastError,
+    DeviceMismatchError,
     InvalidAxisError,
     InvalidShapeError,
     TensorConstructionError,
@@ -12,6 +14,7 @@ from titan_ai.tensor.exceptions.errors import (
     TitanTensorError,
     UnsupportedDeviceError,
     UnsupportedDtypeError,
+    UnsupportedOperandError,
 )
 
 __all__ = [
@@ -26,4 +29,7 @@ __all__ = [
     "InvalidShapeError",
     "InvalidAxisError",
     "TensorIndexError",
+    "BroadcastError",
+    "DeviceMismatchError",
+    "UnsupportedOperandError",
 ]

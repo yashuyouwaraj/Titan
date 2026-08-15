@@ -31,3 +31,15 @@ class InvalidAxisError(TensorValidationError):
 
 class TensorIndexError(TensorValidationError):
     """Raised when tensor indexing is invalid."""
+
+
+class BroadcastError(InvalidShapeError):
+    """Raised when operand shapes cannot be broadcast together."""
+
+
+class DeviceMismatchError(TensorValidationError):
+    """Raised when tensor operands live on different devices."""
+
+
+class UnsupportedOperandError(TensorValidationError):
+    """Raised when an arithmetic operand type is not supported."""

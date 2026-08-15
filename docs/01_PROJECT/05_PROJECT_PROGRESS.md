@@ -119,9 +119,9 @@ Architecture and documentation only until implementation phases complete.
 - [x] Factory methods (zeros, ones, empty, full, arange, from_numpy)
 - [x] Shape operations (reshape, transpose, flatten, squeeze, unsqueeze)
 - [x] Indexing and slicing
-- [ ] Arithmetic, broadcasting, and matrix multiplication
+- [x] Arithmetic, broadcasting, and matrix multiplication
 - [ ] Reductions and mathematical operations
-- [x] Core and Day 3 testing (98 tests)
+- [x] Core, Day 3, and Day 4 testing (199 tests)
 - [ ] Benchmarking
 - [ ] Integration
 

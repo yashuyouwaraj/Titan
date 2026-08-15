@@ -67,3 +67,27 @@ class TensorBackend(ABC):
     @abstractmethod
     def get_item(self, key: Any) -> "TensorBackend | int | float | bool":
         """Return an indexed sub-tensor or scalar value."""
+
+    @abstractmethod
+    def add(self, other: "TensorBackend", dtype: Dtype) -> "TensorBackend":
+        """Return element-wise addition with ``other`` using ``dtype``."""
+
+    @abstractmethod
+    def subtract(self, other: "TensorBackend", dtype: Dtype) -> "TensorBackend":
+        """Return element-wise subtraction with ``other`` using ``dtype``."""
+
+    @abstractmethod
+    def multiply(self, other: "TensorBackend", dtype: Dtype) -> "TensorBackend":
+        """Return element-wise multiplication with ``other`` using ``dtype``."""
+
+    @abstractmethod
+    def true_divide(self, other: "TensorBackend", dtype: Dtype) -> "TensorBackend":
+        """Return element-wise true division with ``other`` using ``dtype``."""
+
+    @abstractmethod
+    def negate(self, dtype: Dtype) -> "TensorBackend":
+        """Return element-wise negation using ``dtype``."""
+
+    @abstractmethod
+    def matmul(self, other: "TensorBackend", dtype: Dtype) -> "TensorBackend":
+        """Return matrix multiplication with ``other`` using ``dtype``."""

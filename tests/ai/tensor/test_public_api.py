@@ -1,7 +1,9 @@
 """Tests for public API imports."""
 
 from titan_ai.tensor import (
+    BroadcastError,
     Device,
+    DeviceMismatchError,
     Dtype,
     Tensor,
     TensorConstructionError,
@@ -9,6 +11,7 @@ from titan_ai.tensor import (
     TitanTensorError,
     UnsupportedDeviceError,
     UnsupportedDtypeError,
+    UnsupportedOperandError,
 )
 
 
@@ -27,3 +30,6 @@ class TestPublicApi:
         assert issubclass(UnsupportedDtypeError, TitanTensorError)
         assert issubclass(TensorConstructionError, TitanTensorError)
         assert issubclass(TensorValidationError, TitanTensorError)
+        assert issubclass(BroadcastError, TitanTensorError)
+        assert issubclass(DeviceMismatchError, TitanTensorError)
+        assert issubclass(UnsupportedOperandError, TitanTensorError)
