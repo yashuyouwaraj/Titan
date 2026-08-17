@@ -18,10 +18,10 @@ Titan AI is a first-principles, self-hosted artificial intelligence research and
 | Area | Status |
 |------|--------|
 | Documentation | Foundation and subsystem architecture documented |
-| Implementation | Beginning — Tensor Library foundation (Week 1) |
-| Current phase | Day 1 — repository and Python environment setup |
+| Implementation | Week 1 Tensor Library complete (`titan_ai.tensor`) |
+| Current phase | CPU Tensor foundation ready; next is Autograd |
 
-Implementation is starting with the **Tensor Library** (`titan_ai.tensor`), the numerical foundation for autograd, neural networks, transformers, training, and inference.
+The **Tensor Library** is the numerical foundation for future autograd, neural networks, transformers, training, and inference. Architecture details live in [`docs/04_AI/19_TENSOR_LIBRARY.md`](docs/04_AI/19_TENSOR_LIBRARY.md).
 
 ## Documentation
 
@@ -73,7 +73,7 @@ PyTorch, CUDA, and GPU libraries are not Week 1 dependencies.
 
 ```bash
 py -c "import titan_ai"
-py -c "import titan_ai.tensor"
+py -c "from titan_ai.tensor import Tensor, Dtype, Device"
 ```
 
 ## Run Tests
@@ -82,26 +82,34 @@ py -c "import titan_ai.tensor"
 py -m pytest
 ```
 
-The test hierarchy is under `tests/`. Day 1 may have zero tests; pytest should still complete successfully.
+The Tensor test suite lives under `tests/ai/tensor/`.
 
 ## Run Ruff
 
 Lint:
 
 ```bash
-py -m ruff check titan_ai tests
+py -m ruff check .
 ```
 
 Format check:
 
 ```bash
-py -m ruff format --check titan_ai tests
+py -m ruff format --check .
 ```
 
 Apply formatting:
 
 ```bash
-py -m ruff format titan_ai tests
+py -m ruff format titan_ai tests benchmarks
+```
+
+## Benchmarks
+
+CPU Tensor vs NumPy baseline (wrapper-overhead measurement, not a performance claim):
+
+```bash
+py benchmarks/tensor/run_baseline.py
 ```
 
 ## Project Structure (initial)

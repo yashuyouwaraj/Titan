@@ -151,7 +151,7 @@ tensor.exp()
 tensor.log()
 ```
 
-**Planned (later phases, not Day 5):**
+**Planned (later phases):**
 
 ```python
 tensor.softmax(...)
@@ -226,7 +226,7 @@ NumPy remains behind the backend; these methods are explicit conversion boundari
 
 ---
 
-# Memory and View Semantics (Day 3)
+# Memory and View Semantics
 
 | Operation | Storage behavior |
 |-----------|------------------|
@@ -260,7 +260,7 @@ Every tensor owns explicit metadata independent of the backend implementation.
 | `device` | Execution device (`Device` enum) |
 | `size` | Total number of elements |
 
-Metadata is owned by the `Tensor` wrapper and validated at construction and on operations that change shape or type.
+Metadata is exposed on the `Tensor` wrapper as read-only properties and is derived from backend storage.
 
 ---
 
@@ -641,22 +641,19 @@ Backend owns raw storage; `Tensor` owns a reference to the backend instance. The
 
 # Future Autograd Compatibility
 
-**Status:** not implemented.
+**Status:** not implemented. Week 1 boundaries are suitable for a later autograd layer without rewriting the public Tensor API.
 
-Week 1 designs for future autograd without implementing it:
+Future autograd can intercept discrete operation functions (`operations.arithmetic`, `operations.matmul`, `operations.reductions`, `operations.math`, shape methods) that already return new `Tensor` values via `Tensor._from_backend`.
 
-- Operations return new `Tensor` instances (no silent mutation of shared storage for arithmetic)
-- Operation modules are discrete functions suitable for wrapping with gradient rules
-- `Tensor` metadata remains on the wrapper, not scattered in backend-only state
-- Backend protocol may later expose differentiable primitive hooks
+View-producing operations (`reshape`, `transpose`, `squeeze`/`unsqueeze`, slice indexing) share storage. Autograd will need to record view relationships; that is expected, not a Week 1 defect.
 
-Autograd belongs to a subsequent phase after the CPU tensor foundation is correct and tested.
+Arithmetic, matmul, reductions, and math allocate new storage and do not mutate operands.
 
 ---
 
 # Error Handling Strategy
 
-**Implemented (Day 2–4):**
+**Implemented (Day 2–6):**
 
 | Exception | When |
 |-----------|------|
@@ -688,9 +685,9 @@ Metadata properties (`shape`, `dtype`, `device`, `ndim`, `size`) are read-only P
 
 # Testing Strategy
 
-**Currently implemented (Day 6):** 284 unit tests under `tests/ai/tensor/` covering construction, metadata, dtypes, devices, factories, shape ops, indexing, arithmetic, broadcasting, dtype promotion, matmul, reductions, mathematical functions, 0-d tensors, invariants, exceptions, storage ownership, and public API imports.
+**Currently implemented (Day 7):** 284 unit tests under `tests/ai/tensor/` covering construction, metadata, dtypes, devices, factories, shape ops, indexing, arithmetic, broadcasting, dtype promotion, matmul, reductions, mathematical functions, 0-d tensors, invariants, exceptions, storage ownership, and public API imports.
 
-Day 6 added regression coverage for 0-dimensional arithmetic/math (NumPy ufuncs can return scalars) and factory/reshape support for shape `()`.
+Week 1 regression coverage includes 0-dimensional arithmetic/math (NumPy ufuncs can return scalars) and factory/reshape support for shape `()`.
 
 ---
 
@@ -720,7 +717,9 @@ py benchmarks/tensor/run_baseline.py
 | Day 6 | Tests, benchmarks, API cleanup, error handling |
 | Day 7 | Documentation integration, final review, regression testing |
 
-**Week 1 delivers:** CPU `Tensor` with the foundational operation subset, tests, and benchmarks.
+**Week 1 delivers:** a CPU `Tensor` with the foundational operation subset, tests, benchmarks, and reviewed public API. **Status: complete** as the numerical foundation for later autograd work.
+
+Remaining Tensor work (autograd, GPU, N-D matmul, advanced indexing, extra math) belongs to later phases.
 
 ---
 
@@ -787,3 +786,5 @@ Each layer depends on a stable, tested tensor foundation.
 | Error types (core) | Documented | Implemented | Tested | — |
 
 This table must be updated as implementation progresses. Do not mark items complete until the project's completion criteria are met.
+
+Week 1 Tensor Library (CPU core, operations, tests, benchmark baseline) is complete. Autograd, GPU backends, and neural-network integration remain later-phase work.
