@@ -28,31 +28,112 @@ BackendBinary = Callable[[TensorBackend, Dtype], TensorBackend]
 def add(left: "Tensor", right: Any) -> "Tensor":
     """Return element-wise addition of ``left`` and ``right``."""
     left_tensor, right_tensor, result_dtype = _coerce_operands(left, right, "add")
-    return _apply_binary(left_tensor, right_tensor, "add", result_dtype)
+    result = _apply_binary(left_tensor, right_tensor, "add", result_dtype)
+
+    from titan_ai.tensor.autograd.backward import backward_add
+    from titan_ai.tensor.autograd.graph import attach_grad_fn, should_build_graph
+
+    if should_build_graph(left_tensor, right_tensor):
+        result = attach_grad_fn(
+            result,
+            "add",
+            (left_tensor, right_tensor),
+            backward_add,
+            {},
+        )
+
+    return result
 
 
 def subtract(left: "Tensor", right: Any) -> "Tensor":
     """Return element-wise subtraction of ``right`` from ``left``."""
     left_tensor, right_tensor, result_dtype = _coerce_operands(left, right, "subtract")
-    return _apply_binary(left_tensor, right_tensor, "subtract", result_dtype)
+    result = _apply_binary(left_tensor, right_tensor, "subtract", result_dtype)
+
+    from titan_ai.tensor.autograd.backward import backward_subtract
+    from titan_ai.tensor.autograd.graph import attach_grad_fn, should_build_graph
+
+    if should_build_graph(left_tensor, right_tensor):
+        result = attach_grad_fn(
+            result,
+            "subtract",
+            (left_tensor, right_tensor),
+            backward_subtract,
+            {},
+        )
+
+    return result
 
 
 def multiply(left: "Tensor", right: Any) -> "Tensor":
     """Return element-wise multiplication of ``left`` and ``right``."""
     left_tensor, right_tensor, result_dtype = _coerce_operands(left, right, "multiply")
-    return _apply_binary(left_tensor, right_tensor, "multiply", result_dtype)
+    result = _apply_binary(left_tensor, right_tensor, "multiply", result_dtype)
+
+    from titan_ai.tensor.autograd.backward import backward_multiply
+    from titan_ai.tensor.autograd.graph import attach_grad_fn, should_build_graph
+
+    if should_build_graph(left_tensor, right_tensor):
+        # Store values needed for backward in metadata
+        # Save values for both operands regardless of requires_grad
+        metadata = {
+            "left_value": left_tensor.numpy(),
+            "right_value": right_tensor.numpy(),
+        }
+        result = attach_grad_fn(
+            result,
+            "multiply",
+            (left_tensor, right_tensor),
+            backward_multiply,
+            metadata,
+        )
+
+    return result
 
 
 def true_divide(left: "Tensor", right: Any) -> "Tensor":
     """Return element-wise true division of ``left`` by ``right``."""
     left_tensor, right_tensor, result_dtype = _coerce_operands(left, right, "true_divide")
-    return _apply_binary(left_tensor, right_tensor, "true_divide", result_dtype)
+    result = _apply_binary(left_tensor, right_tensor, "true_divide", result_dtype)
+
+    from titan_ai.tensor.autograd.backward import backward_true_divide
+    from titan_ai.tensor.autograd.graph import attach_grad_fn, should_build_graph
+
+    if should_build_graph(left_tensor, right_tensor):
+        # Store values needed for backward in metadata
+        metadata = {
+            "left_value": left_tensor.numpy(),
+            "right_value": right_tensor.numpy(),
+        }
+        result = attach_grad_fn(
+            result,
+            "true_divide",
+            (left_tensor, right_tensor),
+            backward_true_divide,
+            metadata,
+        )
+
+    return result
 
 
 def reverse_subtract(tensor: "Tensor", left_operand: Any) -> "Tensor":
     """Return ``left_operand - tensor``."""
     left_tensor, right_tensor, result_dtype = _coerce_left_operand(left_operand, tensor, "subtract")
-    return _apply_binary(left_tensor, right_tensor, "subtract", result_dtype)
+    result = _apply_binary(left_tensor, right_tensor, "subtract", result_dtype)
+
+    from titan_ai.tensor.autograd.backward import backward_subtract
+    from titan_ai.tensor.autograd.graph import attach_grad_fn, should_build_graph
+
+    if should_build_graph(left_tensor, right_tensor):
+        result = attach_grad_fn(
+            result,
+            "subtract",
+            (left_tensor, right_tensor),
+            backward_subtract,
+            {},
+        )
+
+    return result
 
 
 def reverse_true_divide(tensor: "Tensor", left_operand: Any) -> "Tensor":
@@ -60,7 +141,25 @@ def reverse_true_divide(tensor: "Tensor", left_operand: Any) -> "Tensor":
     left_tensor, right_tensor, result_dtype = _coerce_left_operand(
         left_operand, tensor, "true_divide"
     )
-    return _apply_binary(left_tensor, right_tensor, "true_divide", result_dtype)
+    result = _apply_binary(left_tensor, right_tensor, "true_divide", result_dtype)
+
+    from titan_ai.tensor.autograd.backward import backward_true_divide
+    from titan_ai.tensor.autograd.graph import attach_grad_fn, should_build_graph
+
+    if should_build_graph(left_tensor, right_tensor):
+        metadata = {
+            "left_value": left_tensor.numpy() if left_tensor.requires_grad else None,
+            "right_value": right_tensor.numpy() if right_tensor.requires_grad else None,
+        }
+        result = attach_grad_fn(
+            result,
+            "true_divide",
+            (left_tensor, right_tensor),
+            backward_true_divide,
+            metadata,
+        )
+
+    return result
 
 
 def negate(tensor: "Tensor") -> "Tensor":
@@ -70,7 +169,21 @@ def negate(tensor: "Tensor") -> "Tensor":
     require_cpu_device(tensor)
     result_dtype = Dtype.int64 if tensor.dtype == Dtype.bool else tensor.dtype
     result_backend = tensor._backend.negate(result_dtype)
-    return Tensor._from_backend(result_backend)
+    result = Tensor._from_backend(result_backend, requires_grad=tensor.requires_grad)
+
+    from titan_ai.tensor.autograd.backward import backward_negate
+    from titan_ai.tensor.autograd.graph import attach_grad_fn, should_build_graph
+
+    if should_build_graph(tensor):
+        result = attach_grad_fn(
+            result,
+            "negate",
+            (tensor,),
+            backward_negate,
+            {},
+        )
+
+    return result
 
 
 def _apply_binary(
@@ -85,7 +198,9 @@ def _apply_binary(
     broadcast_shapes(left.shape, right.shape)
     backend_op: BackendBinary = getattr(left._backend, operation)
     result_backend = backend_op(right._backend, result_dtype)
-    return Tensor._from_backend(result_backend)
+    
+    requires_grad = left.requires_grad or right.requires_grad
+    return Tensor._from_backend(result_backend, requires_grad=requires_grad)
 
 
 def _coerce_operands(
@@ -125,7 +240,7 @@ def _coerce_left_operand(
 def _scalar_tensor(scalar: object, reference: "Tensor") -> "Tensor":
     from titan_ai.tensor.core.tensor import Tensor
 
-    return Tensor(scalar, dtype=dtype_of_scalar(scalar), device=reference.device)
+    return Tensor(scalar, dtype=dtype_of_scalar(scalar), device=reference.device, requires_grad=False)
 
 
 def _result_dtype(left: Dtype, right: Dtype, operation: str) -> Dtype:

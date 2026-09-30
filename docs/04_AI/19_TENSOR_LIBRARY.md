@@ -23,10 +23,10 @@ No other document should duplicate Tensor Library architecture details. Related 
 - Error handling for invalid operations
 - Numerical correctness validation against NumPy
 - Testing and benchmarking foundations
+- Autograd state and graph construction (Phase 1)
 
 ## Out of scope (later phases)
 
-- Autograd
 - Neural network layers
 - Transformer blocks
 - Training loops
@@ -92,6 +92,13 @@ tensor.ndim
 tensor.dtype
 tensor.device
 tensor.size
+
+# Autograd State (Phase 1 & 2)
+tensor.requires_grad  # bool
+tensor.grad  # Tensor | None
+tensor.grad_fn  # AutogradNode | None
+tensor.is_leaf  # bool
+tensor.backward(grad=None)  # Trigger backward pass
 
 # Shape operations
 tensor.reshape(2, 3)
@@ -757,10 +764,238 @@ Each layer depends on a stable, tested tensor foundation.
 
 ---
 
+# Autograd System (Phase 1)
+
+**Status:** Implemented (graph construction only), tested.
+
+Phase 1 of the Autograd system adds gradient tracking state and computation graph construction to the Tensor library. This enables automatic differentiation for neural network training while maintaining backward compatibility with existing code.
+
+## Tensor Autograd State
+
+Each tensor now tracks gradient-related metadata:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `requires_grad` | `bool` | Whether gradient tracking is enabled for this tensor (default: `False`) |
+| `grad` | `Tensor | None` | Accumulated gradient (currently always `None` in Phase 1) |
+| `grad_fn` | `AutogradNode | None` | Computation graph node for backward pass (leaf tensors have `None`) |
+| `is_leaf` | `bool` | Whether this tensor is a leaf node in the computation graph |
+
+User-created tensors and factory method tensors are leaf nodes by default. Tensors produced by operations with gradient-tracking inputs become non-leaf nodes with an attached `AutogradNode`.
+
+## Constructor and Factory Methods
+
+The `Tensor` constructor and all factory methods now accept an optional `requires_grad` parameter:
+
+```python
+# Constructor
+tensor = Tensor([1.0, 2.0], requires_grad=True)
+
+# Factory methods
+Tensor.zeros((2, 3), requires_grad=True)
+Tensor.ones((2, 3), requires_grad=True)
+Tensor.empty((2, 3), requires_grad=True)
+Tensor.full((2, 3), 5.0, requires_grad=True)
+Tensor.arange(0, 5, requires_grad=True)
+Tensor.from_numpy(array, requires_grad=True)
+```
+
+**Default behavior:** `requires_grad=False` for backward compatibility. Existing code continues to work without modification.
+
+## Gradient Tracking Context
+
+A global gradient tracking context controls whether computation graphs are built:
+
+```python
+from titan_ai.tensor.autograd import enable_tracking, disable_tracking, is_tracking
+
+# Default: tracking enabled
+assert is_tracking() is True
+
+# Disable tracking (e.g., for inference)
+disable_tracking()
+assert is_tracking() is False
+
+# Re-enable tracking
+enable_tracking()
+```
+
+Graph construction only occurs when:
+1. Gradient tracking is enabled (default)
+2. At least one input tensor requires gradients
+
+This prevents unnecessary graph overhead for ordinary tensor operations.
+
+## Computation Graph Construction
+
+When an operation has at least one gradient-tracking input, an `AutogradNode` is attached to the output tensor:
+
+```python
+x = Tensor([2.0], requires_grad=True)
+y = x + 3  # y now has grad_fn attached
+assert y.requires_grad is True
+assert y.is_leaf is False
+assert y.grad_fn is not None
+assert y.grad_fn.operation == "add"
+```
+
+Supported operations in Phase 1:
+- `add` (`+`)
+- `subtract` (`-`)
+- `multiply` (`*`)
+- `true_divide` (`/`)
+- `negate` (`-`)
+
+## AutogradNode Structure
+
+`AutogradNode` stores backward pass information:
+
+```python
+class AutogradNode:
+    operation: str  # e.g., "add", "multiply"
+    inputs: tuple[weakref.ref, ...]  # Weak references to input tensors
+    backward_fn: Callable  # Placeholder in Phase 1
+    metadata: dict  # Optional operation metadata
+```
+
+Weak references prevent reference cycles and allow garbage collection of intermediate tensors.
+
+## Architecture Constraints
+
+- **No PyTorch dependency:** Titan AI implements its own autograd architecture
+- **Minimal overhead:** Graph construction only when needed
+- **Backward-ready:** Architecture designed for future gradient propagation
+- **Performance-focused:** Context allows disabling tracking for inference
+
+## Phase 1 Limitations
+
+The following are **not implemented** in Phase 1:
+
+- Backward pass execution
+- Gradient propagation
+- Gradient accumulation
+- Broadcasting gradients
+- Matmul gradients
+- Reduction gradients
+- Numerical gradient checking
+
+These will be implemented in later Autograd phases.
+
+---
+
+# Autograd Backward Engine (Phase 2)
+
+**Status:** Implemented, tested.
+
+Phase 2 of the Autograd system implements the reverse-mode automatic differentiation (backward pass) that propagates gradients through the computation graph built in Phase 1.
+
+## Backward Pass API
+
+The `Tensor.backward()` method triggers gradient computation:
+
+```python
+# Scalar output (automatic initial gradient)
+x = Tensor(2.0, requires_grad=True)
+y = x * x
+y.backward()
+assert x.grad is not None
+assert x.grad.numpy() == 4.0  # dy/dx = 2x = 4
+
+# Non-scalar output (requires explicit gradient)
+x = Tensor([1.0, 2.0], requires_grad=True)
+y = x * 2
+grad = Tensor([1.0, 1.0], requires_grad=False)
+y.backward(grad)
+assert x.grad is not None
+```
+
+## Backward Engine Behavior
+
+The backward engine:
+
+1. **Validates the initial gradient:**
+   - For scalar tensors (shape `()`), uses `1.0` as the initial gradient if not provided
+   - For non-scalar tensors, requires an explicit gradient matching the output shape
+   - Raises `TensorValidationError` for invalid gradient shapes
+
+2. **Disables gradient tracking:**
+   - Gradient computations do not build new autograd graphs
+   - The tracking context is safely restored after backward completes
+
+3. **Builds topological order:**
+   - Traverses the computation graph from output to inputs
+   - Processes nodes in reverse topological order
+
+4. **Calls backward functions:**
+   - Each node's `backward_fn` computes gradients for its inputs
+   - Gradients are accumulated into the input tensors' `grad` attributes
+
+5. **Handles broadcasting:**
+   - Gradients from broadcasted operations are reduced back to original input shapes
+   - The `unbroadcast_gradient()` function sums over broadcasted dimensions
+
+## Supported Backward Operations
+
+Phase 2 implements backward functions for:
+
+| Operation | Derivative | Backward Function |
+|-----------|------------|-------------------|
+| `add` (`+`) | `dz/dx = 1`, `dz/dy = 1` | `backward_add` |
+| `subtract` (`-`) | `dz/dx = 1`, `dz/dy = -1` | `backward_subtract` |
+| `multiply` (`*`) | `dz/dx = grad_output * y`, `dz/dy = grad_output * x` | `backward_multiply` |
+| `true_divide` (`/`) | `dz/dx = grad_output / y`, `dz/dy = -grad_output * x / (y * y)` | `backward_true_divide` |
+| `negate` (`-x`) | `dz/dx = -grad_output` | `backward_negate` |
+
+## Gradient Accumulation
+
+Multiple paths to the same tensor accumulate gradients:
+
+```python
+x = Tensor(2.0, requires_grad=True)
+a = x * 3
+b = x * 4
+y = a + b
+y.backward()
+# x.grad = 3 + 4 = 7
+```
+
+## Scalar Operand Handling
+
+Operations with scalar operands correctly propagate gradients:
+
+```python
+x = Tensor(2.0, requires_grad=True)
+y = x + 3  # Scalar 3 does not require gradients
+y.backward()
+# x.grad = 1.0 (gradient only propagates to x)
+```
+
+Temporary scalar tensors created during operations may be garbage collected. The backward engine stores operand values in metadata to ensure gradients can be computed even when inputs are no longer available.
+
+## Leaf vs Non-Leaf Tensors
+
+- **Leaf tensors:** User-created or factory method tensors. Gradients are accessible via `tensor.grad` after backward.
+- **Non-leaf tensors:** Intermediate results of operations. They receive gradients during backward but are not typically accessed via `.grad` after completion.
+
+## Phase 2 Limitations
+
+The following are **not implemented** in Phase 2:
+
+- Matmul gradients
+- Reduction gradients (sum, mean, min, max)
+- Mathematical function gradients (abs, sqrt, exp, log)
+- Shape operation gradients (reshape, transpose, squeeze, unsqueeze)
+- Numerical gradient checking
+- Higher-order derivatives
+
+These will be implemented in later Autograd phases as needed.
+
+---
+
 # Related Documentation
 
 - [`12_LLM_ARCHITECTURE.md`](12_LLM_ARCHITECTURE.md) — consumes tensor operations for model forward pass
-- [`15_TRAINING_PIPELINE.md`](15_TRAINING_PIPELINE.md) — consumes tensors and future autograd
+- [`15_TRAINING_PIPELINE.md`](15_TRAINING_PIPELINE.md) — consumes tensors and autograd
 - [`16_INFERENCE_ENGINE.md`](16_INFERENCE_ENGINE.md) — consumes tensors at runtime
 - [`07_TECH_STACK.md`](../../02_ENGINEERING/07_TECH_STACK.md) — NumPy as numerical foundation
 - [`08_TECHNOLOGY_DECISIONS.md`](../../02_ENGINEERING/08_TECHNOLOGY_DECISIONS.md) — technology rationale
@@ -784,7 +1019,10 @@ Each layer depends on a stable, tested tensor foundation.
 | Matrix multiplication | Documented | Implemented (1D/2D) | Tested | Baseline |
 | Reductions / math ops | Documented | Implemented | Tested | Baseline |
 | Error types (core) | Documented | Implemented | Tested | — |
+| Autograd state (Phase 1) | Documented | Implemented | Tested | — |
+| Autograd graph construction (Phase 1) | Documented | Implemented | Tested | — |
+| Autograd backward engine (Phase 2) | Documented | Implemented | Tested | — |
 
 This table must be updated as implementation progresses. Do not mark items complete until the project's completion criteria are met.
 
-Week 1 Tensor Library (CPU core, operations, tests, benchmark baseline) is complete. Autograd, GPU backends, and neural-network integration remain later-phase work.
+Week 1 Tensor Library (CPU core, operations, tests, benchmark baseline) is complete. Autograd Phase 1 (state and graph construction) is complete. Autograd Phase 2 (backward engine for arithmetic operations) is complete. GPU backends, neural-network integration, and advanced autograd features (matmul, reduction, math gradients) remain later-phase work.
