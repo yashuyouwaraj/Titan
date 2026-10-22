@@ -508,8 +508,9 @@ There is no separate functional namespace (`titan_ai.tensor.sum` is not public).
 | `None` (default) | Reduce every element |
 | non-negative `int` | Reduce that dimension (`0` is the first axis) |
 | negative `int` | Count from the end (`-1` is the last axis) |
+| tuple of `int` | Reduce multiple axes simultaneously |
 
-Tuple axes are **not** supported. Passing a tuple, float, or `bool` raises `InvalidAxisError`. Out-of-range axes (for rank 3: `axis=3` or `axis=-4`) raise `InvalidAxisError`. A 0-d tensor only accepts `axis=None`.
+Tuple axes are now supported. Duplicate axes in a tuple are normalized to a unique sorted list. Passing a float or `bool` raises `InvalidAxisError`. Out-of-range axes (for rank 3: `axis=3` or `axis=-4`) raise `InvalidAxisError`. A 0-d tensor only accepts `axis=None`.
 
 Axis validation is centralized in `operations/axis.py`.
 
@@ -622,7 +623,7 @@ Intentional Titan differences from NumPy include:
 
 - empty `mean` / `min` / `max` raise `TensorValidationError` instead of `nan` or a raw NumPy error
 - integer `sum` always uses Titan `int64` (not platform `intp` as a public type)
-- no tuple-axis reductions
+- tuple-axis reductions are now supported (Phase 3)
 - boolean negation/matmul still promote to `int64` (Day 4)
 
 Floating-point division by zero, `sqrt` of negatives, `log` of non-positives, and `exp` overflow follow NumPy: `inf` / `nan` plus a runtime warning, not a Titan exception.
@@ -992,6 +993,116 @@ These will be implemented in later Autograd phases as needed.
 
 ---
 
+# Autograd Extended Gradients (Phase 3)
+
+**Status:** Implemented, tested.
+
+Phase 3 of the Autograd system extends gradient support to matrix multiplication, reductions, and mathematical functions.
+
+## Matmul Gradients
+
+Phase 3 implements backward functions for all supported matmul dimensionalities:
+
+|| Operands | Result | Gradient Formulas |
+||----------|--------|------------------|
+|| 1D @ 1D | scalar | `dA = grad_output * B`, `dB = grad_output * A` |
+|| 2D @ 2D | 2D | `dA = grad_output @ B.T`, `dB = A.T @ grad_output` |
+|| 1D @ 2D | 1D | `dA = (grad_output.unsqueeze(0) @ B.T).squeeze(0)`, `dB = A.unsqueeze(1) @ grad_output.unsqueeze(0)` |
+|| 2D @ 1D | 1D | `dA = grad_output.unsqueeze(1) @ B.unsqueeze(0)`, `dB = A.T @ grad_output` |
+
+All gradients respect the dimensional transformations used by Titan Tensor's matmul implementation.
+
+## Reduction Gradients
+
+Phase 3 implements backward functions for `sum` and `mean` reductions.
+
+### Sum Gradients
+
+For `y = sum(x)`:
+- The gradient is distributed by broadcasting `grad_output` to match `x`'s shape
+- Handles `axis=None`, single axis, and tuple axes
+- Correctly handles `keepdims=True` and `keepdims=False`
+- Final gradient always has exactly the same shape as the original input
+
+### Mean Gradients
+
+For `y = mean(x)`:
+- The gradient is distributed like `sum`, then divided by the number of elements in the reduction
+- The division accounts for the reduced dimensions specified by `axis`
+- Correctly handles all combinations of `axis` and `keepdims`
+
+### Tuple Axes Support
+
+Reductions now support tuple axes for reducing multiple dimensions simultaneously:
+
+```python
+x = Tensor(np.arange(24).reshape(2, 3, 4), requires_grad=True)
+y = x.sum(axis=(0, 1))  # Reduces axes 0 and 1
+grad_output = Tensor([1.0, 1.0, 1.0, 1.0], requires_grad=False)
+y.backward(grad_output)
+# x.grad has shape (2, 3, 4) with broadcasted gradient
+```
+
+The backward implementation correctly reconstructs the gradient shape by unsqueezing reduced axes and broadcasting.
+
+## Mathematical Function Gradients
+
+Phase 3 implements backward functions for element-wise mathematical functions:
+
+|| Operation | Derivative | Backward Function |
+||-----------|------------|-------------------|
+|| `abs` | `dy/dx = sign(x)` (subgradient 0 at x=0) | `backward_abs` |
+|| `sqrt` | `dy/dx = 1 / (2 * sqrt(x))` | `backward_sqrt` |
+|| `exp` | `dy/dx = exp(x)` | `backward_exp` |
+|| `log` | `dy/dx = 1 / x` | `backward_log` |
+
+For `sqrt` and `exp`, the forward output is saved in metadata to avoid recomputation during backward pass.
+
+### Abs Subgradient Convention
+
+At `x = 0`, the subgradient for `abs` is defined as `0`. This is an arbitrary but consistent choice.
+
+## Broadcasting and Unbroadcasting
+
+All new gradient implementations correctly interact with the existing unbroadcasting mechanism:
+
+- Matmul gradients respect dimensional transformations
+- Reduction gradients broadcast to original input shapes
+- Elementwise math operations use the existing unbroadcasting for broadcasting inputs
+
+## Numerical Gradient Checking
+
+Phase 3 adds a numerical gradient checking utility for validating analytical gradients:
+
+```python
+from titan_ai.tensor.autograd.gradient_check import check_gradient
+
+x = Tensor([2.0, 3.0], requires_grad=True)
+
+def func(t: Tensor) -> Tensor:
+    return (t * 2).sum()
+
+# Returns True if analytical gradient matches numerical gradient
+assert check_gradient(func, x, atol=1e-5, rtol=1e-4)
+```
+
+The utility uses central differences: `(f(x + ε) - f(x - ε)) / (2ε)`.
+
+This is a testing-focused utility, not a production runtime dependency.
+
+## Phase 3 Limitations
+
+The following are **not implemented** in Phase 3:
+
+- `min` and `max` gradients (deferred due to tie/subgradient semantics)
+- Shape operation gradients (reshape, transpose, squeeze, unsqueeze)
+- Higher-order derivatives
+- GPU backend integration
+
+These will be implemented in later Autograd phases as needed.
+
+---
+
 # Related Documentation
 
 - [`12_LLM_ARCHITECTURE.md`](12_LLM_ARCHITECTURE.md) — consumes tensor operations for model forward pass
@@ -1022,7 +1133,12 @@ These will be implemented in later Autograd phases as needed.
 | Autograd state (Phase 1) | Documented | Implemented | Tested | — |
 | Autograd graph construction (Phase 1) | Documented | Implemented | Tested | — |
 | Autograd backward engine (Phase 2) | Documented | Implemented | Tested | — |
+| Matmul gradients (Phase 3) | Documented | Implemented | Tested | — |
+| Reduction gradients (Phase 3) | Documented | Implemented | Tested | — |
+| Math function gradients (Phase 3) | Documented | Implemented | Tested | — |
+| Tuple axes support (Phase 3) | Documented | Implemented | Tested | — |
+| Numerical gradient checking (Phase 3) | Documented | Implemented | Tested | — |
 
 This table must be updated as implementation progresses. Do not mark items complete until the project's completion criteria are met.
 
-Week 1 Tensor Library (CPU core, operations, tests, benchmark baseline) is complete. Autograd Phase 1 (state and graph construction) is complete. Autograd Phase 2 (backward engine for arithmetic operations) is complete. GPU backends, neural-network integration, and advanced autograd features (matmul, reduction, math gradients) remain later-phase work.
+Week 1 Tensor Library (CPU core, operations, tests, benchmark baseline) is complete. Autograd Phase 1 (state and graph construction) is complete. Autograd Phase 2 (backward engine for arithmetic operations) is complete. Autograd Phase 3 (matmul, reduction, and math gradients with tuple axes support) is complete. GPU backends, neural-network integration, and advanced autograd features (min/max gradients, shape operation gradients, higher-order derivatives) remain later-phase work.

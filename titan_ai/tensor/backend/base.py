@@ -95,7 +95,7 @@ class TensorBackend(ABC):
     @abstractmethod
     def reduce_sum(
         self,
-        axis: int | None,
+        axis: int | tuple[int, ...] | None,
         keepdims: bool,
         dtype: Dtype,
     ) -> "TensorBackend":
@@ -104,7 +104,7 @@ class TensorBackend(ABC):
     @abstractmethod
     def reduce_mean(
         self,
-        axis: int | None,
+        axis: int | tuple[int, ...] | None,
         keepdims: bool,
         dtype: Dtype,
     ) -> "TensorBackend":
@@ -113,7 +113,7 @@ class TensorBackend(ABC):
     @abstractmethod
     def reduce_min(
         self,
-        axis: int | None,
+        axis: int | tuple[int, ...] | None,
         keepdims: bool,
         dtype: Dtype,
     ) -> "TensorBackend":
@@ -122,7 +122,7 @@ class TensorBackend(ABC):
     @abstractmethod
     def reduce_max(
         self,
-        axis: int | None,
+        axis: int | tuple[int, ...] | None,
         keepdims: bool,
         dtype: Dtype,
     ) -> "TensorBackend":

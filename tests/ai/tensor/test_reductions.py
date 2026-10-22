@@ -210,14 +210,69 @@ class TestAxisValidation:
         with pytest.raises(InvalidAxisError, match="integer"):
             tensor.max(axis=1.5)  # type: ignore[arg-type]
 
-    def test_tuple_axes_not_supported(self) -> None:
+    def test_tuple_axes_supported(self) -> None:
+        """Test that tuple axes are now supported for reductions."""
         tensor = Tensor(np.arange(24).reshape(2, 3, 4), dtype=Dtype.int32)
-        with pytest.raises(InvalidAxisError):
-            tensor.sum(axis=(0, 1))  # type: ignore[arg-type]
+        # Should not raise - tuple axes are now supported
+        result = tensor.sum(axis=(0, 1))
+        assert result.shape == (4,)
+        assert_tensor_equal(result, np.array([60, 66, 72, 78], dtype=np.int64))
 
     def test_zero_d_axis_must_be_none(self) -> None:
         with pytest.raises(InvalidAxisError, match="0-dimensional"):
             Tensor(3).sum(axis=0)
+
+
+class TestTupleAxes:
+    """Test reductions with tuple axes."""
+
+    def test_sum_tuple_axes(self) -> None:
+        tensor = Tensor(np.arange(24).reshape(2, 3, 4), dtype=Dtype.int32)
+        result = tensor.sum(axis=(0, 1))
+        assert result.shape == (4,)
+        # Sum over axes 0 and 1: 0+4+8+12+16+20=60, 1+5+9+13+17+21=66, etc.
+        assert_tensor_equal(result, np.array([60, 66, 72, 78], dtype=np.int64))
+
+    def test_sum_tuple_axes_keepdims(self) -> None:
+        tensor = Tensor(np.arange(24).reshape(2, 3, 4), dtype=Dtype.int32)
+        result = tensor.sum(axis=(0, 1), keepdims=True)
+        assert result.shape == (1, 1, 4)
+        assert_tensor_equal(result, np.array([[[60, 66, 72, 78]]], dtype=np.int64))
+
+    def test_mean_tuple_axes(self) -> None:
+        tensor = Tensor(np.arange(24).reshape(2, 3, 4), dtype=Dtype.float64)
+        result = tensor.mean(axis=(0, 1))
+        assert result.shape == (4,)
+        # Mean over axes 0 and 1: 60/6=10, 66/6=11, etc.
+        expected = np.array([10.0, 11.0, 12.0, 13.0], dtype=np.float64)
+        assert_tensor_equal(result, expected)
+
+    def test_mean_tuple_axes_keepdims(self) -> None:
+        tensor = Tensor(np.arange(24).reshape(2, 3, 4), dtype=Dtype.float64)
+        result = tensor.mean(axis=(0, 1), keepdims=True)
+        assert result.shape == (1, 1, 4)
+        expected = np.array([[[10.0, 11.0, 12.0, 13.0]]], dtype=np.float64)
+        assert_tensor_equal(result, expected)
+
+    def test_tuple_axes_all_axes(self) -> None:
+        tensor = Tensor(np.arange(24).reshape(2, 3, 4), dtype=Dtype.int32)
+        result = tensor.sum(axis=(0, 1, 2))
+        assert result.shape == ()
+        assert_tensor_equal(result, np.array(276, dtype=np.int64))
+
+    def test_tuple_axes_negative_indices(self) -> None:
+        tensor = Tensor(np.arange(24).reshape(2, 3, 4), dtype=Dtype.int32)
+        result = tensor.sum(axis=(-3, -2))
+        assert result.shape == (4,)
+        assert_tensor_equal(result, np.array([60, 66, 72, 78], dtype=np.int64))
+
+    def test_tuple_axes_duplicate_normalized(self) -> None:
+        """Test that duplicate axes in tuple are normalized to unique sorted list."""
+        tensor = Tensor(np.arange(24).reshape(2, 3, 4), dtype=Dtype.int32)
+        # (0, 1, 0) should be normalized to (0, 1)
+        result = tensor.sum(axis=(0, 1, 0))
+        assert result.shape == (4,)
+        assert_tensor_equal(result, np.array([60, 66, 72, 78], dtype=np.int64))
 
 
 class TestEmptyReductions:

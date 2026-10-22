@@ -29,7 +29,21 @@ def matmul(left: "Tensor", right: object) -> "Tensor":
     matmul_result_shape(left.shape, right.shape)
     result_dtype = _matmul_dtype(left, right)
     result_backend = left._backend.matmul(right._backend, result_dtype)
-    return Tensor._from_backend(result_backend)
+    result = Tensor._from_backend(result_backend, requires_grad=left.requires_grad or right.requires_grad)
+
+    from titan_ai.tensor.autograd.backward import backward_matmul
+    from titan_ai.tensor.autograd.graph import attach_grad_fn, should_build_graph
+
+    if should_build_graph(left, right):
+        result = attach_grad_fn(
+            result,
+            "matmul",
+            (left, right),
+            backward_matmul,
+            {},
+        )
+
+    return result
 
 
 def matmul_result_shape(shape_a: tuple[int, ...], shape_b: tuple[int, ...]) -> tuple[int, ...]:

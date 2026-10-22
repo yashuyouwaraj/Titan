@@ -226,7 +226,7 @@ class NumpyBackend(TensorBackend):
 
     def reduce_sum(
         self,
-        axis: int | None,
+        axis: int | tuple[int, ...] | None,
         keepdims: bool,
         dtype: Dtype,
     ) -> "NumpyBackend":
@@ -235,7 +235,7 @@ class NumpyBackend(TensorBackend):
 
     def reduce_mean(
         self,
-        axis: int | None,
+        axis: int | tuple[int, ...] | None,
         keepdims: bool,
         dtype: Dtype,
     ) -> "NumpyBackend":
@@ -244,7 +244,7 @@ class NumpyBackend(TensorBackend):
 
     def reduce_min(
         self,
-        axis: int | None,
+        axis: int | tuple[int, ...] | None,
         keepdims: bool,
         dtype: Dtype,
     ) -> "NumpyBackend":
@@ -252,7 +252,7 @@ class NumpyBackend(TensorBackend):
 
     def reduce_max(
         self,
-        axis: int | None,
+        axis: int | tuple[int, ...] | None,
         keepdims: bool,
         dtype: Dtype,
     ) -> "NumpyBackend":
@@ -273,7 +273,7 @@ class NumpyBackend(TensorBackend):
     def _minmax(
         self,
         func: Any,
-        axis: int | None,
+        axis: int | tuple[int, ...] | None,
         keepdims: bool,
         dtype: Dtype,
         operation: str,

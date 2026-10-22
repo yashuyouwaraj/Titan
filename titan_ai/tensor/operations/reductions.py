@@ -15,7 +15,7 @@ ReductionName = Literal["sum", "mean", "min", "max"]
 
 def reduce_sum(
     tensor: "Tensor",
-    axis: int | None = None,
+    axis: int | tuple[int, ...] | None = None,
     *,
     keepdims: bool = False,
 ) -> "Tensor":
@@ -25,7 +25,7 @@ def reduce_sum(
 
 def reduce_mean(
     tensor: "Tensor",
-    axis: int | None = None,
+    axis: int | tuple[int, ...] | None = None,
     *,
     keepdims: bool = False,
 ) -> "Tensor":
@@ -35,7 +35,7 @@ def reduce_mean(
 
 def reduce_min(
     tensor: "Tensor",
-    axis: int | None = None,
+    axis: int | tuple[int, ...] | None = None,
     *,
     keepdims: bool = False,
 ) -> "Tensor":
@@ -45,7 +45,7 @@ def reduce_min(
 
 def reduce_max(
     tensor: "Tensor",
-    axis: int | None = None,
+    axis: int | tuple[int, ...] | None = None,
     *,
     keepdims: bool = False,
 ) -> "Tensor":
@@ -56,7 +56,7 @@ def reduce_max(
 def _reduce(
     tensor: "Tensor",
     operation: ReductionName,
-    axis: int | None,
+    axis: int | tuple[int, ...] | None,
     keepdims: bool,
 ) -> "Tensor":
     from titan_ai.tensor.core.tensor import Tensor
@@ -67,7 +67,61 @@ def _reduce(
     result_dtype = _reduction_dtype(tensor.dtype, operation)
     backend_method = getattr(tensor._backend, f"reduce_{operation}")
     result_backend = backend_method(normalized_axis, keepdims, result_dtype)
-    return Tensor._from_backend(result_backend)
+    result = Tensor._from_backend(result_backend, requires_grad=tensor.requires_grad)
+
+    # Attach autograd for sum and mean
+    if operation in ("sum", "mean") and tensor.requires_grad:
+        from titan_ai.tensor.autograd.backward import backward_sum, backward_mean
+        from titan_ai.tensor.autograd.graph import attach_grad_fn, should_build_graph
+
+        if should_build_graph(tensor):
+            # Calculate metadata for backward
+            original_shape = tensor.shape
+            reduced_axes = _get_reduced_axes(tensor.ndim, normalized_axis)
+            reduction_size = _get_reduction_size(tensor.shape, normalized_axis)
+
+            metadata = {
+                "original_shape": original_shape,
+                "reduced_axes": reduced_axes,
+                "reduction_size": reduction_size,
+            }
+
+            backward_fn = backward_sum if operation == "sum" else backward_mean
+            result = attach_grad_fn(
+                result,
+                operation,
+                (tensor,),
+                backward_fn,
+                metadata,
+            )
+
+    return result
+
+
+def _get_reduced_axes(ndim: int, axis: int | tuple[int, ...] | None) -> list[int]:
+    """Get the list of axes that were reduced."""
+    if axis is None:
+        return list(range(ndim))
+    if isinstance(axis, tuple):
+        return list(axis)
+    return [axis]
+
+
+def _get_reduction_size(shape: tuple[int, ...], axis: int | tuple[int, ...] | None) -> int:
+    """Get the number of elements in the reduction."""
+    if axis is None:
+        if not shape:
+            return 1
+        total = 1
+        for dim in shape:
+            total *= dim
+        return total
+    if isinstance(axis, tuple):
+        total = 1
+        for ax in axis:
+            total *= shape[ax]
+        return total
+    return shape[axis]
 
 
 def _validate_empty_reduction(

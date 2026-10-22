@@ -465,3 +465,496 @@ class TestBackwardLeafVsNonLeaf:
         x = Tensor(2.0, requires_grad=True)
         x.backward()
         assert x.grad is None
+
+
+class TestMatmulBackward:
+    """Test backward pass for matrix multiplication."""
+
+    def test_matmul_1d_1d_backward(self) -> None:
+        """Test backward for 1D @ 1D → scalar."""
+        import numpy as np
+
+        A = Tensor([2.0, 3.0], requires_grad=True)
+        B = Tensor([4.0, 5.0], requires_grad=True)
+        C = A @ B
+        C.backward()
+
+        # C = 2*4 + 3*5 = 8 + 15 = 23
+        # dC/dA = B = [4, 5]
+        # dC/dB = A = [2, 3]
+        assert A.grad is not None
+        assert B.grad is not None
+        assert A.grad.shape == (2,)
+        assert B.grad.shape == (2,)
+        np.testing.assert_allclose(A.grad.numpy(), [4.0, 5.0], atol=1e-6)
+        np.testing.assert_allclose(B.grad.numpy(), [2.0, 3.0], atol=1e-6)
+
+    def test_matmul_2d_2d_backward(self) -> None:
+        """Test backward for 2D @ 2D → 2D."""
+        import numpy as np
+
+        A = Tensor([[1.0, 2.0], [3.0, 4.0]], requires_grad=True)
+        B = Tensor([[5.0, 6.0], [7.0, 8.0]], requires_grad=True)
+        C = A @ B
+        # C is 2D, so provide gradient
+        grad_output = Tensor([[1.0, 0.0], [0.0, 1.0]], requires_grad=False)
+        C.backward(grad_output)
+
+        # C = A @ B
+        # dC/dA = grad_output @ B.T
+        # dC/dB = A.T @ grad_output
+        assert A.grad is not None
+        assert B.grad is not None
+        assert A.grad.shape == (2, 2)
+        assert B.grad.shape == (2, 2)
+
+        expected_grad_A = np.array([[1.0, 0.0], [0.0, 1.0]]) @ np.array([[5.0, 7.0], [6.0, 8.0]])
+        expected_grad_B = np.array([[1.0, 3.0], [2.0, 4.0]]) @ np.array([[1.0, 0.0], [0.0, 1.0]])
+        np.testing.assert_allclose(A.grad.numpy(), expected_grad_A, atol=1e-6)
+        np.testing.assert_allclose(B.grad.numpy(), expected_grad_B, atol=1e-6)
+
+    def test_matmul_1d_2d_backward(self) -> None:
+        """Test backward for 1D @ 2D → 1D."""
+        import numpy as np
+
+        A = Tensor([2.0, 3.0], requires_grad=True)
+        B = Tensor([[1.0, 2.0], [3.0, 4.0]], requires_grad=True)
+        C = A @ B
+        # C is 1D, provide gradient
+        grad_output = Tensor([1.0, 1.0], requires_grad=False)
+        C.backward(grad_output)
+
+        # C is 1D: [2*1+3*3, 2*2+3*4] = [11, 16]
+        # dC/dA = grad_output @ B.T, then reshape to match A
+        # dC/dB = A.T @ grad_output (with proper reshaping)
+        assert A.grad is not None
+        assert B.grad is not None
+        assert A.grad.shape == (2,)
+        assert B.grad.shape == (2, 2)
+
+        # dC/dA should be [1+1, 1+1] @ B.T = [2, 2] @ [[1, 3], [2, 4]] = [2*1+2*2, 2*3+2*4] = [6, 14]
+        # Actually: grad_output @ B.T = [1, 1] @ [[1, 3], [2, 4]] = [1*1+1*2, 1*3+1*4] = [3, 7]
+        np.testing.assert_allclose(A.grad.numpy(), [3.0, 7.0], atol=1e-6)
+
+        # dC/dB should have A values repeated along rows
+        # A.T @ grad_output = [[2], [3]] @ [1, 1] = [[2, 2], [3, 3]]
+        expected_grad_B = np.array([[2.0, 2.0], [3.0, 3.0]])
+        np.testing.assert_allclose(B.grad.numpy(), expected_grad_B, atol=1e-6)
+
+    def test_matmul_2d_1d_backward(self) -> None:
+        """Test backward for 2D @ 1D → 1D."""
+        import numpy as np
+
+        A = Tensor([[1.0, 2.0], [3.0, 4.0]], requires_grad=True)
+        B = Tensor([5.0, 6.0], requires_grad=True)
+        C = A @ B
+        # C is 1D, provide gradient
+        grad_output = Tensor([1.0, 1.0], requires_grad=False)
+        C.backward(grad_output)
+
+        # C is 1D: [1*5+2*6, 3*5+4*6] = [17, 39]
+        # dC/dA = grad_output @ B.T (with proper reshaping)
+        # dC/dB = A.T @ grad_output
+        assert A.grad is not None
+        assert B.grad is not None
+        assert A.grad.shape == (2, 2)
+        assert B.grad.shape == (2,)
+
+        # dC/dA should have B values repeated along columns
+        # grad_output @ B.T = [1, 1] @ [5, 6] = [5, 6] (as row), then broadcast to [[5, 6], [5, 6]]
+        expected_grad_A = np.array([[5.0, 6.0], [5.0, 6.0]])
+        np.testing.assert_allclose(A.grad.numpy(), expected_grad_A, atol=1e-6)
+
+        # dC/dB should be [1+3, 2+4] = [4, 6] (sum of A rows)
+        # A.T @ grad_output = [[1, 3], [2, 4]] @ [1, 1] = [4, 6]
+        np.testing.assert_allclose(B.grad.numpy(), [4.0, 6.0], atol=1e-6)
+
+    def test_matmul_chain_backward(self) -> None:
+        """Test matmul in a chain with other operations."""
+        import numpy as np
+
+        A = Tensor([2.0, 3.0], requires_grad=True)
+        B = Tensor([4.0, 5.0], requires_grad=True)
+        C = A @ B  # scalar
+        D = C * 2  # scalar
+        D.backward()
+
+        # D = 2 * (A @ B) = 2 * 23 = 46
+        # dD/dA = 2 * B = [8, 10]
+        # dD/dB = 2 * A = [4, 6]
+        assert A.grad is not None
+        assert B.grad is not None
+        np.testing.assert_allclose(A.grad.numpy(), [8.0, 10.0], atol=1e-6)
+        np.testing.assert_allclose(B.grad.numpy(), [4.0, 6.0], atol=1e-6)
+
+    def test_matmul_no_grad_for_no_requires_grad(self) -> None:
+        """Test that tensors without requires_grad don't get gradients."""
+        A = Tensor([2.0, 3.0], requires_grad=True)
+        B = Tensor([4.0, 5.0], requires_grad=False)
+        C = A @ B
+        C.backward()
+
+        assert A.grad is not None
+        assert B.grad is None
+
+
+class TestSumBackward:
+    """Test backward pass for sum reduction."""
+
+    def test_sum_axis_none_backward(self) -> None:
+        """Test backward for sum with axis=None."""
+        import numpy as np
+
+        x = Tensor([1.0, 2.0, 3.0], requires_grad=True)
+        y = x.sum()
+        y.backward()
+
+        # y = 6, dy/dx = 1 for all elements
+        assert x.grad is not None
+        assert x.grad.shape == (3,)
+        np.testing.assert_allclose(x.grad.numpy(), [1.0, 1.0, 1.0], atol=1e-6)
+
+    def test_sum_axis_0_backward(self) -> None:
+        """Test backward for sum with axis=0."""
+        import numpy as np
+
+        x = Tensor([[1.0, 2.0], [3.0, 4.0]], requires_grad=True)
+        y = x.sum(axis=0)
+        grad_output = Tensor([1.0, 1.0], requires_grad=False)
+        y.backward(grad_output)
+
+        # y = [4, 6], dy/dx should broadcast [1, 1] to match (2, 2)
+        assert x.grad is not None
+        assert x.grad.shape == (2, 2)
+        np.testing.assert_allclose(x.grad.numpy(), [[1.0, 1.0], [1.0, 1.0]], atol=1e-6)
+
+    def test_sum_axis_1_backward(self) -> None:
+        """Test backward for sum with axis=1."""
+        import numpy as np
+
+        x = Tensor([[1.0, 2.0], [3.0, 4.0]], requires_grad=True)
+        y = x.sum(axis=1)
+        grad_output = Tensor([1.0, 1.0], requires_grad=False)
+        y.backward(grad_output)
+
+        # y = [3, 7], dy/dx should broadcast [1, 1] to match (2, 2)
+        assert x.grad is not None
+        assert x.grad.shape == (2, 2)
+        np.testing.assert_allclose(x.grad.numpy(), [[1.0, 1.0], [1.0, 1.0]], atol=1e-6)
+
+    def test_sum_keepdims_true_backward(self) -> None:
+        """Test backward for sum with keepdims=True."""
+        import numpy as np
+
+        x = Tensor([[1.0, 2.0], [3.0, 4.0]], requires_grad=True)
+        y = x.sum(axis=1, keepdims=True)
+        grad_output = Tensor([[1.0], [1.0]], requires_grad=False)
+        y.backward(grad_output)
+
+        # y = [[3], [7]], dy/dx should broadcast to match (2, 2)
+        assert x.grad is not None
+        assert x.grad.shape == (2, 2)
+        np.testing.assert_allclose(x.grad.numpy(), [[1.0, 1.0], [1.0, 1.0]], atol=1e-6)
+
+    def test_sum_scalar_backward(self) -> None:
+        """Test backward for sum of scalar."""
+        x = Tensor(5.0, requires_grad=True)
+        y = x.sum()
+        y.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == ()
+        assert abs(x.grad.numpy() - 1.0) < 1e-6
+
+
+class TestMeanBackward:
+    """Test backward pass for mean reduction."""
+
+    def test_mean_axis_none_backward(self) -> None:
+        """Test backward for mean with axis=None."""
+        import numpy as np
+
+        x = Tensor([1.0, 2.0, 3.0], requires_grad=True)
+        y = x.mean()
+        y.backward()
+
+        # y = 2, dy/dx = 1/3 for all elements
+        assert x.grad is not None
+        assert x.grad.shape == (3,)
+        np.testing.assert_allclose(x.grad.numpy(), [1.0/3, 1.0/3, 1.0/3], atol=1e-6)
+
+    def test_mean_axis_0_backward(self) -> None:
+        """Test backward for mean with axis=0."""
+        import numpy as np
+
+        x = Tensor([[1.0, 2.0], [3.0, 4.0]], requires_grad=True)
+        y = x.mean(axis=0)
+        grad_output = Tensor([1.0, 1.0], requires_grad=False)
+        y.backward(grad_output)
+
+        # y = [2, 3], dy/dx = 1/2 broadcast to (2, 2)
+        assert x.grad is not None
+        assert x.grad.shape == (2, 2)
+        np.testing.assert_allclose(x.grad.numpy(), [[0.5, 0.5], [0.5, 0.5]], atol=1e-6)
+
+    def test_mean_axis_1_backward(self) -> None:
+        """Test backward for mean with axis=1."""
+        import numpy as np
+
+        x = Tensor([[1.0, 2.0], [3.0, 4.0]], requires_grad=True)
+        y = x.mean(axis=1)
+        grad_output = Tensor([1.0, 1.0], requires_grad=False)
+        y.backward(grad_output)
+
+        # y = [1.5, 3.5], dy/dx = 1/2 broadcast to (2, 2)
+        assert x.grad is not None
+        assert x.grad.shape == (2, 2)
+        np.testing.assert_allclose(x.grad.numpy(), [[0.5, 0.5], [0.5, 0.5]], atol=1e-6)
+
+    def test_mean_keepdims_true_backward(self) -> None:
+        """Test backward for mean with keepdims=True."""
+        import numpy as np
+
+        x = Tensor([[1.0, 2.0], [3.0, 4.0]], requires_grad=True)
+        y = x.mean(axis=1, keepdims=True)
+        grad_output = Tensor([[1.0], [1.0]], requires_grad=False)
+        y.backward(grad_output)
+
+        # y = [[1.5], [3.5]], dy/dx = 1/2 broadcast to (2, 2)
+        assert x.grad is not None
+        assert x.grad.shape == (2, 2)
+        np.testing.assert_allclose(x.grad.numpy(), [[0.5, 0.5], [0.5, 0.5]], atol=1e-6)
+
+
+class TestMathBackward:
+    """Test backward pass for mathematical functions."""
+
+    def test_abs_backward_positive(self) -> None:
+        """Test backward for abs with positive values."""
+        import numpy as np
+
+        x = Tensor([2.0, 3.0], requires_grad=True)
+        y = x.abs()
+        y.backward(Tensor([1.0, 1.0], requires_grad=False))
+
+        # dy/dx = sign(x) = [1, 1]
+        assert x.grad is not None
+        np.testing.assert_allclose(x.grad.numpy(), [1.0, 1.0], atol=1e-6)
+
+    def test_abs_backward_negative(self) -> None:
+        """Test backward for abs with negative values."""
+        import numpy as np
+
+        x = Tensor([-2.0, -3.0], requires_grad=True)
+        y = x.abs()
+        y.backward(Tensor([1.0, 1.0], requires_grad=False))
+
+        # dy/dx = sign(x) = [-1, -1]
+        assert x.grad is not None
+        np.testing.assert_allclose(x.grad.numpy(), [-1.0, -1.0], atol=1e-6)
+
+    def test_abs_backward_zero(self) -> None:
+        """Test backward for abs with zero (subgradient of 0)."""
+        import numpy as np
+
+        x = Tensor([0.0], requires_grad=True)
+        y = x.abs()
+        y.backward(Tensor([1.0], requires_grad=False))
+
+        # dy/dx = sign(0) = 0 (subgradient convention)
+        assert x.grad is not None
+        assert abs(x.grad.numpy() - 0.0) < 1e-6
+
+    def test_sqrt_backward(self) -> None:
+        """Test backward for sqrt."""
+        import numpy as np
+
+        x = Tensor([4.0, 9.0], requires_grad=True)
+        y = x.sqrt()
+        y.backward(Tensor([1.0, 1.0], requires_grad=False))
+
+        # dy/dx = 1 / (2 * sqrt(x)) = [1/(2*2), 1/(2*3)] = [0.25, 0.1667]
+        assert x.grad is not None
+        np.testing.assert_allclose(x.grad.numpy(), [0.25, 1.0/6.0], atol=1e-6)
+
+    def test_exp_backward(self) -> None:
+        """Test backward for exp."""
+        import numpy as np
+
+        x = Tensor([0.0, 1.0], requires_grad=True)
+        y = x.exp()
+        y.backward(Tensor([1.0, 1.0], requires_grad=False))
+
+        # dy/dx = exp(x) = [1, e]
+        assert x.grad is not None
+        np.testing.assert_allclose(x.grad.numpy(), [1.0, np.e], atol=1e-6)
+
+    def test_log_backward(self) -> None:
+        """Test backward for log."""
+        import numpy as np
+
+        x = Tensor([1.0, 2.0], requires_grad=True)
+        y = x.log()
+        y.backward(Tensor([1.0, 1.0], requires_grad=False))
+
+        # dy/dx = 1/x = [1, 0.5]
+        assert x.grad is not None
+        np.testing.assert_allclose(x.grad.numpy(), [1.0, 0.5], atol=1e-6)
+
+
+class TestTupleAxesBackward:
+    """Test backward pass for reductions with tuple axes."""
+
+    def test_sum_tuple_axes_backward(self) -> None:
+        """Test backward for sum with tuple axes."""
+        import numpy as np
+
+        x = Tensor([[[1.0, 2.0], [3.0, 4.0]], [[5.0, 6.0], [7.0, 8.0]]], requires_grad=True)
+        y = x.sum(axis=(0, 1))
+        grad_output = Tensor([1.0, 1.0], requires_grad=False)
+        y.backward(grad_output)
+
+        # y = [1+3+5+7, 2+4+6+8] = [16, 20]
+        # dy/dx should broadcast [1, 1] to match (2, 2, 2)
+        assert x.grad is not None
+        assert x.grad.shape == (2, 2, 2)
+        np.testing.assert_allclose(x.grad.numpy(), np.ones((2, 2, 2)), atol=1e-6)
+
+    def test_sum_tuple_axes_keepdims_backward(self) -> None:
+        """Test backward for sum with tuple axes and keepdims=True."""
+        import numpy as np
+
+        x = Tensor([[[1.0, 2.0], [3.0, 4.0]], [[5.0, 6.0], [7.0, 8.0]]], requires_grad=True)
+        y = x.sum(axis=(0, 1), keepdims=True)
+        grad_output = Tensor([[[1.0, 1.0]]], requires_grad=False)
+        y.backward(grad_output)
+
+        # y = [[[16, 20]]]
+        # dy/dx should broadcast to match (2, 2, 2)
+        assert x.grad is not None
+        assert x.grad.shape == (2, 2, 2)
+        np.testing.assert_allclose(x.grad.numpy(), np.ones((2, 2, 2)), atol=1e-6)
+
+    def test_mean_tuple_axes_backward(self) -> None:
+        """Test backward for mean with tuple axes."""
+        import numpy as np
+
+        x = Tensor([[[1.0, 2.0], [3.0, 4.0]], [[5.0, 6.0], [7.0, 8.0]]], requires_grad=True)
+        y = x.mean(axis=(0, 1))
+        grad_output = Tensor([1.0, 1.0], requires_grad=False)
+        y.backward(grad_output)
+
+        # y = [16/4, 20/4] = [4, 5]
+        # dy/dx = 1/4 broadcast to (2, 2, 2)
+        assert x.grad is not None
+        assert x.grad.shape == (2, 2, 2)
+        np.testing.assert_allclose(x.grad.numpy(), np.full((2, 2, 2), 0.25), atol=1e-6)
+
+    def test_mean_tuple_axes_keepdims_backward(self) -> None:
+        """Test backward for mean with tuple axes and keepdims=True."""
+        import numpy as np
+
+        x = Tensor([[[1.0, 2.0], [3.0, 4.0]], [[5.0, 6.0], [7.0, 8.0]]], requires_grad=True)
+        y = x.mean(axis=(0, 1), keepdims=True)
+        grad_output = Tensor([[[1.0, 1.0]]], requires_grad=False)
+        y.backward(grad_output)
+
+        # y = [[[4, 5]]]
+        # dy/dx = 1/4 broadcast to (2, 2, 2)
+        assert x.grad is not None
+        assert x.grad.shape == (2, 2, 2)
+        np.testing.assert_allclose(x.grad.numpy(), np.full((2, 2, 2), 0.25), atol=1e-6)
+
+    def test_sum_tuple_axes_2d_backward(self) -> None:
+        """Test backward for sum with tuple axes on 2D tensor."""
+        import numpy as np
+
+        x = Tensor([[1.0, 2.0], [3.0, 4.0]], requires_grad=True)
+        y = x.sum(axis=(0, 1))
+        y.backward()
+
+        # y = 10, dy/dx = 1 for all elements
+        assert x.grad is not None
+        assert x.grad.shape == (2, 2)
+        np.testing.assert_allclose(x.grad.numpy(), [[1.0, 1.0], [1.0, 1.0]], atol=1e-6)
+
+
+class TestGradientIntegration:
+    """Test integration of gradient operations."""
+
+    def test_matmul_sum_chain(self) -> None:
+        """Test matmul → sum → backward."""
+        import numpy as np
+
+        A = Tensor([[1.0, 2.0], [3.0, 4.0]], requires_grad=True)
+        B = Tensor([[5.0, 6.0], [7.0, 8.0]], requires_grad=True)
+        C = A @ B
+        loss = C.sum()
+        loss.backward()
+
+        # loss = sum(A @ B)
+        # dloss/dA = grad_output @ B.T where grad_output is all ones
+        # grad_output @ B.T = [[1,1],[1,1]] @ [[5,7],[6,8]] = [[11,15],[11,15]]
+        # dloss/dB = A.T @ grad_output where grad_output is all ones
+        # A.T @ [[1,1],[1,1]] = [[1,3],[2,4]] @ [[1,1],[1,1]] = [[4,4],[6,6]]
+        assert A.grad is not None
+        assert B.grad is not None
+        np.testing.assert_allclose(A.grad.numpy(), [[11.0, 15.0], [11.0, 15.0]], atol=1e-6)
+        np.testing.assert_allclose(B.grad.numpy(), [[4.0, 4.0], [6.0, 6.0]], atol=1e-6)
+
+    def test_multiply_exp_sum_chain(self) -> None:
+        """Test multiply → exp → sum → backward."""
+        import numpy as np
+
+        x = Tensor([1.0, 2.0], requires_grad=True)
+        y = x * 2
+        z = y.exp()
+        loss = z.sum()
+        loss.backward()
+
+        # loss = sum(exp(2x))
+        # dloss/dx = 2 * exp(2x)
+        expected = 2 * np.exp(2 * np.array([1.0, 2.0]))
+        assert x.grad is not None
+        np.testing.assert_allclose(x.grad.numpy(), expected, atol=1e-6)
+
+    def test_matmul_sqrt_sum_chain(self) -> None:
+        """Test matmul → sqrt → sum → backward."""
+        import numpy as np
+
+        A = Tensor([[4.0, 9.0]], requires_grad=True)
+        B = Tensor([[1.0], [1.0]], requires_grad=True)
+        C = A @ B  # scalar: 4+9=13
+        D = C.sqrt()
+        loss = D.sum()
+        loss.backward()
+
+        # loss = sqrt(A @ B) = sqrt(13)
+        # dloss/dA = (1/(2*sqrt(13))) @ B.T = 1/(2*sqrt(13)) * [1, 1]
+        # dloss/dB = A.T @ (1/(2*sqrt(13))) = [[4], [9]] / (2*sqrt(13))
+        assert A.grad is not None
+        assert B.grad is not None
+
+        factor = 1.0 / (2 * np.sqrt(13.0))
+        np.testing.assert_allclose(A.grad.numpy(), factor * np.array([[1.0, 1.0]]), atol=1e-6)
+        np.testing.assert_allclose(B.grad.numpy(), factor * np.array([[4.0], [9.0]]), atol=1e-6)
+
+    def test_gradient_accumulation_with_new_ops(self) -> None:
+        """Test gradient accumulation with new operations."""
+        import numpy as np
+
+        x = Tensor([2.0, 3.0], requires_grad=True)
+        a = x * 2
+        b = x * 3
+        c = a + b
+        loss = c.sum()
+        loss.backward()
+
+        # a = [4, 6], b = [6, 9], c = [10, 15], loss = 25
+        # dloss/dc = [1, 1]
+        # dloss/da = [1, 1], dloss/db = [1, 1]
+        # dloss/dx from a = dloss/da * da/dx = [1, 1] * 2 = [2, 2]
+        # dloss/dx from b = dloss/db * db/dx = [1, 1] * 3 = [3, 3]
+        # Total: [5, 5]
+        assert x.grad is not None
+        np.testing.assert_allclose(x.grad.numpy(), [5.0, 5.0], atol=1e-6)

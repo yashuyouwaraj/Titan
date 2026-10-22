@@ -1026,3 +1026,150 @@ Autograd features not yet implemented:
 - Higher-order derivatives
 
 These will be implemented in later phases as neural network modules require them.
+
+---
+
+## Date
+
+2026-10-22
+
+---
+
+### Session Goal
+
+Implement Autograd Phase 3: Matrix multiplication, reduction, and mathematical function gradients with tuple axes support.
+
+---
+
+### Implementation Overview
+
+Implemented backward pass support for:
+
+1. **Matrix multiplication gradients** (`backward_matmul`)
+   - 1D @ 1D → scalar: `dA = grad_output * B`, `dB = grad_output * A`
+   - 2D @ 2D → 2D: `dA = grad_output @ B.T`, `dB = A.T @ grad_output`
+   - 1D @ 2D → 1D: Proper reshaping for dimensionality transformations
+   - 2D @ 1D → 1D: Proper reshaping for dimensionality transformations
+
+2. **Reduction gradients** (`backward_sum`, `backward_mean`)
+   - `sum`: Gradient distributed by broadcasting to original shape
+   - `mean`: Gradient distributed and divided by reduction size
+   - Support for `axis=None`, single axis, and tuple axes
+   - Correct handling of `keepdims=True` and `keepdims=False`
+
+3. **Mathematical function gradients**
+   - `abs`: `dy/dx = sign(x)` with subgradient 0 at x=0
+   - `sqrt`: `dy/dx = 1 / (2 * sqrt(x))` with forward output caching
+   - `exp`: `dy/dx = exp(x)` with forward output caching
+   - `log`: `dy/dx = 1 / x`
+
+4. **Tuple axes support**
+   - Extended `normalize_reduction_axis` to accept tuples
+   - Updated reduction API signatures throughout the stack
+   - Correct gradient reconstruction for tuple axes
+   - Duplicate axes normalized to unique sorted list
+
+5. **Numerical gradient checking utility**
+   - `gradient_check.py` module with central difference validation
+   - `check_gradient()` for boolean validation
+   - `max_gradient_error()` for detailed error metrics
+   - Testing-focused utility, not production dependency
+
+---
+
+### Key Architectural Decisions
+
+1. **Matmul dimensional handling**: Each dimensional combination uses specific reshape operations to match Titan Tensor's actual matmul behavior, not generic formulas.
+
+2. **Tuple axes normalization**: Duplicate axes in tuples are normalized to unique sorted lists to prevent double-counting in reductions.
+
+3. **Forward output caching**: For `sqrt` and `exp`, the forward output is saved in metadata to avoid recomputation during backward pass.
+
+4. **Subgradient convention**: `abs` at x=0 uses subgradient 0, an arbitrary but consistent choice.
+
+5. **Gradient shape integrity**: All backward implementations guarantee `gradient.shape == original_input.shape`.
+
+---
+
+### Files Modified
+
+- `titan_ai/tensor/autograd/backward.py` - Added backward_matmul, backward_sum, backward_mean, backward_abs, backward_sqrt, backward_exp, backward_log
+- `titan_ai/tensor/autograd/gradient_check.py` - NEW: Numerical gradient checking utility
+- `titan_ai/tensor/operations/axis.py` - Extended to support tuple axes
+- `titan_ai/tensor/operations/reductions.py` - Added tuple axes support and gradient metadata
+- `titan_ai/tensor/operations/math.py` - Integrated backward functions with metadata
+- `titan_ai/tensor/operations/matmul.py` - Integrated backward_matmul
+- `titan_ai/tensor/backend/base.py` - Updated reduction signatures for tuple axes
+- `titan_ai/tensor/backend/numpy_backend.py` - Updated reduction implementations for tuple axes
+- `titan_ai/tensor/core/tensor.py` - Updated reduction signatures for tuple axes
+- `tests/ai/tensor/test_autograd.py` - Added 30 new tests (tuple axes, matmul gradients, reduction gradients, math gradients, integration tests)
+- `tests/ai/tensor/test_reductions.py` - Updated tuple axes test and added comprehensive tuple axes tests
+- `docs/04_AI/19_TENSOR_LIBRARY.md` - Added Phase 3 documentation section
+- `docs/01_PROJECT/DAILY_ENGINEERING_LOG.md` - This entry
+
+---
+
+### Test Results
+
+```
+tests/ai/tensor/test_autograd.py: 80 passed
+tests/ai/tensor/ (all tests): 371 passed
+```
+
+All tests pass, including:
+- 5 tuple axes backward tests
+- 6 matmul gradient tests (all dimensionalities)
+- 7 sum gradient tests (axis variations)
+- 4 mean gradient tests (axis variations)
+- 4 math gradient tests (abs, sqrt, exp, log)
+- 4 integration tests (matmul→sum, multiply→exp→sum, etc.)
+- 7 tuple axes forward tests
+
+---
+
+### Verification Steps Completed
+
+1. ✅ Phase 2 baseline passes (all 75 autograd tests)
+2. ✅ Matmul gradients work (all 4 dimensionalities)
+3. ✅ Sum gradients work (axis=None, single axis, tuple axes, keepdims)
+4. ✅ Mean gradients work (axis=None, single axis, tuple axes, keepdims)
+5. ✅ Math gradients work (abs, sqrt, exp, log)
+6. ✅ Broadcasting works (reductions and matmul)
+7. ✅ Tuple axes work (reductions and gradients)
+8. ✅ Gradient accumulation still works (multiple paths)
+9. ✅ No second graph is created (tracking disabled during backward)
+10. ✅ Gradient shapes are correct (all operations)
+11. ✅ Numerical validation passes (gradient check utility)
+12. ✅ Full test suite passes (371 tests)
+
+---
+
+### Documentation Updated
+
+- `docs/04_AI/19_TENSOR_LIBRARY.md` - Added Autograd Extended Gradients (Phase 3) section with:
+  - Matmul gradient formulas for all dimensionalities
+  - Reduction gradient details with tuple axes
+  - Mathematical function derivatives
+  - Subgradient convention for abs
+  - Numerical gradient checking utility
+  - Updated implementation status table
+- `docs/01_PROJECT/DAILY_ENGINEERING_LOG.md` - This entry
+
+---
+
+### Next Engineering Goal
+
+Autograd Phase 4: Implement remaining gradients as needed (min/max with tie/subgradient semantics, shape operation gradients) or move to neural network layer implementations.
+
+---
+
+### Remaining Work
+
+Autograd features not yet implemented:
+
+- `min` and `max` gradients (deferred due to tie/subgradient semantics requiring design decisions)
+- Shape operation gradients (reshape, transpose, squeeze, unsqueeze)
+- Higher-order derivatives
+- GPU backend integration
+
+These will be implemented in later phases as neural network modules require them.

@@ -360,25 +360,25 @@ class Tensor:
         """Insert a singleton dimension at the given axis."""
         return Tensor._from_backend(self._backend.unsqueeze(axis=axis), requires_grad=self.requires_grad)
 
-    def sum(self, axis: int | None = None, *, keepdims: bool = False) -> "Tensor":
+    def sum(self, axis: int | tuple[int, ...] | None = None, *, keepdims: bool = False) -> "Tensor":
         """Return the sum of elements over the selected axis."""
         from titan_ai.tensor.operations.reductions import reduce_sum
 
         return reduce_sum(self, axis=axis, keepdims=keepdims)
 
-    def mean(self, axis: int | None = None, *, keepdims: bool = False) -> "Tensor":
+    def mean(self, axis: int | tuple[int, ...] | None = None, *, keepdims: bool = False) -> "Tensor":
         """Return the mean of elements over the selected axis."""
         from titan_ai.tensor.operations.reductions import reduce_mean
 
         return reduce_mean(self, axis=axis, keepdims=keepdims)
 
-    def min(self, axis: int | None = None, *, keepdims: bool = False) -> "Tensor":
+    def min(self, axis: int | tuple[int, ...] | None = None, *, keepdims: bool = False) -> "Tensor":
         """Return the minimum of elements over the selected axis."""
         from titan_ai.tensor.operations.reductions import reduce_min
 
         return reduce_min(self, axis=axis, keepdims=keepdims)
 
-    def max(self, axis: int | None = None, *, keepdims: bool = False) -> "Tensor":
+    def max(self, axis: int | tuple[int, ...] | None = None, *, keepdims: bool = False) -> "Tensor":
         """Return the maximum of elements over the selected axis."""
         from titan_ai.tensor.operations.reductions import reduce_max
 

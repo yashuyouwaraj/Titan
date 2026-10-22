@@ -192,6 +192,341 @@ def backward_negate(
     return None
 
 
+def backward_matmul(
+    grad_output: "Tensor",
+    left: "Tensor | None",
+    right: "Tensor | None",
+    metadata: dict | None = None,
+) -> tuple["Tensor | None", "Tensor | None"]:
+    """Backward pass for matrix multiplication.
+
+    For C = A @ B:
+    - 1D @ 1D → scalar: dA = grad_output * B, dB = grad_output * A
+    - 2D @ 2D → 2D: dA = grad_output @ B.T, dB = A.T @ grad_output
+    - 1D @ 2D → 1D: dA = grad_output @ B.T (then reshape to 1D), dB = A.T @ grad_output
+    - 2D @ 1D → 1D: dA = grad_output @ B.T (reshape B to 2D), dB = A.T @ grad_output
+
+    Args:
+        grad_output: Gradient flowing back from the output.
+        left: First input tensor (may be None if garbage collected).
+        right: Second input tensor (may be None if garbage collected).
+        metadata: Optional metadata with input shapes.
+
+    Returns:
+        Tuple of (grad_left, grad_right).
+    """
+    grad_left = None
+    grad_right = None
+
+    if left is not None and left.requires_grad and right is not None:
+        left_ndim = left.ndim
+        right_ndim = right.ndim
+
+        if left_ndim == 1 and right_ndim == 1:
+            # 1D @ 1D → scalar
+            # dA = grad_output * B
+            grad_left = grad_output * right
+        elif left_ndim == 2 and right_ndim == 2:
+            # 2D @ 2D → 2D
+            # dA = grad_output @ B.T
+            grad_left = grad_output @ right.T
+        elif left_ndim == 1 and right_ndim == 2:
+            # 1D @ 2D → 1D
+            # dA = grad_output @ B.T, then reshape to match original left shape
+            # grad_output is (M,), B.T is (N, M), need to unsqueeze grad_output to (1, M)
+            grad_output_2d = grad_output.unsqueeze(0)
+            # Result is (1, N), squeeze to (N,)
+            grad_left = (grad_output_2d @ right.T).squeeze(0)
+        elif left_ndim == 2 and right_ndim == 1:
+            # 2D @ 1D → 1D
+            # dA = grad_output @ B.T (B is 1D, need to treat as column vector)
+            # grad_output is (M,), B is (N,)
+            # Need: grad_output @ B.T = (M,) @ (N,) doesn't work
+            # Correct: unsqueeze grad_output to (M, 1), B to (1, N), then matmul
+            grad_output_2d = grad_output.unsqueeze(1)
+            right_2d = right.unsqueeze(0)
+            # Result is (M, N), matches left shape
+            grad_left = grad_output_2d @ right_2d
+
+    if right is not None and right.requires_grad and left is not None:
+        left_ndim = left.ndim
+        right_ndim = right.ndim
+
+        if left_ndim == 1 and right_ndim == 1:
+            # 1D @ 1D → scalar
+            # dB = grad_output * A
+            grad_right = grad_output * left
+        elif left_ndim == 2 and right_ndim == 2:
+            # 2D @ 2D → 2D
+            # dB = A.T @ grad_output
+            grad_right = left.T @ grad_output
+        elif left_ndim == 1 and right_ndim == 2:
+            # 1D @ 2D → 1D
+            # dB = A.T @ grad_output (A is 1D, need to treat as row vector)
+            # A is (N,), grad_output is (M,)
+            # Need outer product: A[i] * grad_output[j] for each i, j
+            # This is A[:, None] @ grad_output[None, :] = (N, 1) @ (1, M) = (N, M)
+            left_2d = left.unsqueeze(1)  # (N, 1)
+            grad_output_2d = grad_output.unsqueeze(0)  # (1, M)
+            # Result is (N, M), matches right shape
+            grad_right = left_2d @ grad_output_2d
+        elif left_ndim == 2 and right_ndim == 1:
+            # 2D @ 1D → 1D
+            # dB = A.T @ grad_output
+            # A.T is (N, M), grad_output is (M,), result is (N,) - matches right shape
+            grad_right = left.T @ grad_output
+
+    return grad_left, grad_right
+
+
+def backward_sum(
+    grad_output: "Tensor",
+    x: "Tensor | None",
+    metadata: dict | None = None,
+) -> "Tensor | None":
+    """Backward pass for sum reduction.
+
+    For y = sum(x):
+    The gradient is distributed by broadcasting grad_output to match x's shape.
+
+    Args:
+        grad_output: Gradient flowing back from the output.
+        x: Input tensor (may be None if garbage collected).
+        metadata: Optional metadata with original shape and reduction parameters.
+
+    Returns:
+        Gradient for x, or None if x was None or doesn't require gradients.
+    """
+    if x is not None and x.requires_grad:
+        original_shape = metadata.get("original_shape") if metadata else None
+        if original_shape is None:
+            original_shape = x.shape
+
+        # Broadcast grad_output to original shape
+        # If keepdims was True, grad_output already has the right number of dimensions
+        # If keepdims was False, we need to unsqueeze
+        grad = grad_output
+        if grad.ndim < len(original_shape):
+            # Need to unsqueeze dimensions that were reduced
+            reduced_axes = metadata.get("reduced_axes") if metadata else None
+            if reduced_axes is not None:
+                # unsqueeze each reduced axis
+                for axis in sorted(reduced_axes):
+                    grad = grad.unsqueeze(axis)
+
+        # Now broadcast to full shape
+        if grad.shape != original_shape:
+            # If grad is scalar (shape ()) and original is not, we need to broadcast
+            if grad.shape == () and original_shape != ():
+                # Scalar gradient: broadcast to full shape
+                from titan_ai.tensor.core.tensor import Tensor
+                import numpy as np
+                grad_np = np.full(original_shape, grad.numpy())
+                grad = Tensor(grad_np, dtype=grad.dtype, device=grad.device, requires_grad=False)
+            else:
+                # Need to broadcast grad to original shape
+                # Use numpy broadcasting to handle this
+                from titan_ai.tensor.core.tensor import Tensor
+                import numpy as np
+                grad_np = np.broadcast_to(grad.numpy(), original_shape)
+                grad = Tensor(grad_np, dtype=grad.dtype, device=grad.device, requires_grad=False)
+
+        return grad
+    return None
+
+
+def backward_mean(
+    grad_output: "Tensor",
+    x: "Tensor | None",
+    metadata: dict | None = None,
+) -> "Tensor | None":
+    """Backward pass for mean reduction.
+
+    For y = mean(x):
+    The gradient is distributed by broadcasting grad_output to match x's shape,
+    then divided by the number of elements in the reduction.
+
+    Args:
+        grad_output: Gradient flowing back from the output.
+        x: Input tensor (may be None if garbage collected).
+        metadata: Optional metadata with original shape and reduction parameters.
+
+    Returns:
+        Gradient for x, or None if x was None or doesn't require gradients.
+    """
+    if x is not None and x.requires_grad:
+        original_shape = metadata.get("original_shape") if metadata else None
+        if original_shape is None:
+            original_shape = x.shape
+
+        # Get the number of elements in the reduction
+        reduction_size = metadata.get("reduction_size") if metadata else 1
+        if reduction_size == 0:
+            reduction_size = 1
+
+        # Broadcast grad_output to original shape
+        grad = grad_output
+        if grad.ndim < len(original_shape):
+            # Need to unsqueeze dimensions that were reduced
+            reduced_axes = metadata.get("reduced_axes") if metadata else None
+            if reduced_axes is not None:
+                # unsqueeze each reduced axis
+                for axis in sorted(reduced_axes):
+                    grad = grad.unsqueeze(axis)
+
+        # Now broadcast to full shape
+        if grad.shape != original_shape:
+            # If grad is scalar (shape ()) and original is not, we need to broadcast
+            if grad.shape == () and original_shape != ():
+                # Scalar gradient: broadcast to full shape
+                from titan_ai.tensor.core.tensor import Tensor
+                import numpy as np
+                grad_np = np.full(original_shape, grad.numpy())
+                grad = Tensor(grad_np, dtype=grad.dtype, device=grad.device, requires_grad=False)
+            else:
+                # Need to broadcast grad to original shape
+                # Use numpy broadcasting to handle this
+                from titan_ai.tensor.core.tensor import Tensor
+                import numpy as np
+                grad_np = np.broadcast_to(grad.numpy(), original_shape)
+                grad = Tensor(grad_np, dtype=grad.dtype, device=grad.device, requires_grad=False)
+
+        # Divide by the number of elements in the reduction
+        grad = grad / reduction_size
+
+        return grad
+    return None
+
+
+def backward_abs(
+    grad_output: "Tensor",
+    x: "Tensor | None",
+    metadata: dict | None = None,
+) -> "Tensor | None":
+    """Backward pass for absolute value.
+
+    For y = abs(x):
+    dy/dx = sign(x) for x != 0
+    At x = 0, use subgradient of 0 (arbitrary but consistent choice).
+
+    Args:
+        grad_output: Gradient flowing back from the output.
+        x: Input tensor (may be None if garbage collected).
+        metadata: Optional metadata (not used for abs).
+
+    Returns:
+        Gradient for x, or None if x was None or doesn't require gradients.
+    """
+    if x is not None and x.requires_grad:
+        # sign(x) = 1 if x > 0, -1 if x < 0, 0 if x == 0
+        # Use numpy's sign function
+        import numpy as np
+        from titan_ai.tensor.core.tensor import Tensor
+
+        x_np = x.numpy()
+        sign_np = np.sign(x_np)
+        sign = Tensor(sign_np, dtype=grad_output.dtype, device=grad_output.device, requires_grad=False)
+
+        return grad_output * sign
+    return None
+
+
+def backward_sqrt(
+    grad_output: "Tensor",
+    x: "Tensor | None",
+    metadata: dict | None = None,
+) -> "Tensor | None":
+    """Backward pass for square root.
+
+    For y = sqrt(x):
+    dy/dx = 1 / (2 * sqrt(x))
+
+    Args:
+        grad_output: Gradient flowing back from the output.
+        x: Input tensor (may be None if garbage collected).
+        metadata: Optional metadata with saved forward output.
+
+    Returns:
+        Gradient for x, or None if x was None or doesn't require gradients.
+    """
+    if x is not None and x.requires_grad:
+        # dy/dx = 1 / (2 * sqrt(x))
+        # Prefer using saved forward output if available
+        if metadata and "output" in metadata:
+            output = metadata["output"]
+            if output is not None:
+                # grad_output / (2 * output)
+                return grad_output / (2 * output)
+        else:
+            # Recompute sqrt(x)
+            from titan_ai.tensor.core.tensor import Tensor
+            from titan_ai.tensor.operations.math import sqrt
+
+            sqrt_x = sqrt(x)
+            return grad_output / (2 * sqrt_x)
+    return None
+
+
+def backward_exp(
+    grad_output: "Tensor",
+    x: "Tensor | None",
+    metadata: dict | None = None,
+) -> "Tensor | None":
+    """Backward pass for exponential.
+
+    For y = exp(x):
+    dy/dx = exp(x)
+
+    Args:
+        grad_output: Gradient flowing back from the output.
+        x: Input tensor (may be None if garbage collected).
+        metadata: Optional metadata with saved forward output.
+
+    Returns:
+        Gradient for x, or None if x was None or doesn't require gradients.
+    """
+    if x is not None and x.requires_grad:
+        # dy/dx = exp(x)
+        # Prefer using saved forward output if available
+        if metadata and "output" in metadata:
+            output = metadata["output"]
+            if output is not None:
+                # grad_output * exp(x)
+                return grad_output * output
+        else:
+            # Recompute exp(x)
+            from titan_ai.tensor.core.tensor import Tensor
+            from titan_ai.tensor.operations.math import exp
+
+            exp_x = exp(x)
+            return grad_output * exp_x
+    return None
+
+
+def backward_log(
+    grad_output: "Tensor",
+    x: "Tensor | None",
+    metadata: dict | None = None,
+) -> "Tensor | None":
+    """Backward pass for natural logarithm.
+
+    For y = log(x):
+    dy/dx = 1 / x
+
+    Args:
+        grad_output: Gradient flowing back from the output.
+        x: Input tensor (may be None if garbage collected).
+        metadata: Optional metadata (not used for log).
+
+    Returns:
+        Gradient for x, or None if x was None or doesn't require gradients.
+    """
+    if x is not None and x.requires_grad:
+        # dy/dx = 1 / x
+        return grad_output / x
+    return None
+
+
 def unbroadcast_gradient(grad: "Tensor", original_shape: tuple[int, ...]) -> "Tensor":
     """Reduce a gradient from broadcasted shape back to original shape.
 
