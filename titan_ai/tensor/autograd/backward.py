@@ -527,6 +527,126 @@ def backward_log(
     return None
 
 
+def backward_reshape(
+    grad_output: "Tensor",
+    x: "Tensor | None",
+    metadata: dict | None = None,
+) -> "Tensor | None":
+    """Backward pass for reshape.
+
+    For y = x.reshape(new_shape):
+    The gradient is reshaped back to the original input shape.
+
+    Args:
+        grad_output: Gradient flowing back from the output.
+        x: Input tensor (may be None if garbage collected).
+        metadata: Optional metadata with original shape.
+
+    Returns:
+        Gradient for x, or None if x was None or doesn't require gradients.
+    """
+    if x is not None and x.requires_grad:
+        original_shape = metadata.get("original_shape") if metadata else None
+        if original_shape is None:
+            original_shape = x.shape
+
+        # Reshape gradient back to original shape
+        return grad_output.reshape(original_shape)
+    return None
+
+
+def backward_transpose(
+    grad_output: "Tensor",
+    x: "Tensor | None",
+    metadata: dict | None = None,
+) -> "Tensor | None":
+    """Backward pass for transpose.
+
+    For y = x.transpose(axes):
+    The gradient is transposed with the inverse permutation.
+
+    Args:
+        grad_output: Gradient flowing back from the output.
+        x: Input tensor (may be None if garbage collected).
+        metadata: Optional metadata with the axes permutation.
+
+    Returns:
+        Gradient for x, or None if x was None or doesn't require gradients.
+    """
+    if x is not None and x.requires_grad:
+        axes = metadata.get("axes") if metadata else None
+
+        if axes is None:
+            # Default transpose: reverse all axes
+            # The inverse of reverse is also reverse
+            return grad_output.transpose()
+        else:
+            # Explicit axes permutation
+            # The inverse permutation: axes_inv[axes[i]] = i
+            axes_inv = [0] * len(axes)
+            for i, ax in enumerate(axes):
+                axes_inv[ax] = i
+            return grad_output.transpose(*axes_inv)
+    return None
+
+
+def backward_squeeze(
+    grad_output: "Tensor",
+    x: "Tensor | None",
+    metadata: dict | None = None,
+) -> "Tensor | None":
+    """Backward pass for squeeze.
+
+    For y = x.squeeze(axis):
+    The gradient is unsqueezed at the removed axis.
+
+    Args:
+        grad_output: Gradient flowing back from the output.
+        x: Input tensor (may be None if garbage collected).
+        metadata: Optional metadata with the squeezed axis.
+
+    Returns:
+        Gradient for x, or None if x was None or doesn't require gradients.
+    """
+    if x is not None and x.requires_grad:
+        axis = metadata.get("axis") if metadata else None
+
+        if axis is None:
+            # All singleton dimensions were removed
+            # Simply reshape to original shape
+            original_shape = metadata.get("original_shape") if metadata else x.shape
+            return grad_output.reshape(original_shape)
+        else:
+            # Specific axis was squeezed
+            return grad_output.unsqueeze(axis)
+    return None
+
+
+def backward_unsqueeze(
+    grad_output: "Tensor",
+    x: "Tensor | None",
+    metadata: dict | None = None,
+) -> "Tensor | None":
+    """Backward pass for unsqueeze.
+
+    For y = x.unsqueeze(axis):
+    The gradient is squeezed at the inserted axis.
+
+    Args:
+        grad_output: Gradient flowing back from the output.
+        x: Input tensor (may be None if garbage collected).
+        metadata: Optional metadata with the unsqueezed axis.
+
+    Returns:
+        Gradient for x, or None if x was None or doesn't require gradients.
+    """
+    if x is not None and x.requires_grad:
+        axis = metadata.get("axis") if metadata else None
+        if axis is not None:
+            return grad_output.squeeze(axis=axis)
+    return None
+
+
 def unbroadcast_gradient(grad: "Tensor", original_shape: tuple[int, ...]) -> "Tensor":
     """Reduce a gradient from broadcasted shape back to original shape.
 

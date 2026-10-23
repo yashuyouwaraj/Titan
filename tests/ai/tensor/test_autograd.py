@@ -958,3 +958,317 @@ class TestGradientIntegration:
         # Total: [5, 5]
         assert x.grad is not None
         np.testing.assert_allclose(x.grad.numpy(), [5.0, 5.0], atol=1e-6)
+
+
+class TestReshapeBackward:
+    """Test backward pass for reshape."""
+
+    def test_reshape_backward_vector_to_matrix(self) -> None:
+        """Test backward for reshape from vector to matrix."""
+        import numpy as np
+
+        x = Tensor([1.0, 2.0, 3.0, 4.0], requires_grad=True)
+        y = x.reshape((2, 2))
+        loss = y.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (4,)
+        np.testing.assert_allclose(x.grad.numpy(), [1.0, 1.0, 1.0, 1.0], atol=1e-6)
+
+    def test_reshape_backward_matrix_to_vector(self) -> None:
+        """Test backward for reshape from matrix to vector."""
+        import numpy as np
+
+        x = Tensor([[1.0, 2.0], [3.0, 4.0]], requires_grad=True)
+        y = x.reshape(4)
+        loss = y.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (2, 2)
+        np.testing.assert_allclose(x.grad.numpy(), [[1.0, 1.0], [1.0, 1.0]], atol=1e-6)
+
+    def test_reshape_backward_scalar_to_vector(self) -> None:
+        """Test backward for reshape from scalar to vector."""
+        import numpy as np
+
+        x = Tensor(5.0, requires_grad=True)
+        y = x.reshape(1)
+        loss = y.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == ()
+        assert abs(x.grad.numpy() - 1.0) < 1e-6
+
+    def test_reshape_backward_chained(self) -> None:
+        """Test backward for chained reshapes."""
+        import numpy as np
+
+        x = Tensor([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], requires_grad=True)
+        y = x.reshape((2, 3))
+        z = y.reshape(6)
+        loss = z.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (6,)
+        np.testing.assert_allclose(x.grad.numpy(), [1.0, 1.0, 1.0, 1.0, 1.0, 1.0], atol=1e-6)
+
+    def test_reshape_backward_with_inference(self) -> None:
+        """Test backward for reshape with -1 inference."""
+        import numpy as np
+
+        x = Tensor([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], requires_grad=True)
+        y = x.reshape((2, -1))  # Infers 3
+        loss = y.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (6,)
+        np.testing.assert_allclose(x.grad.numpy(), [1.0, 1.0, 1.0, 1.0, 1.0, 1.0], atol=1e-6)
+
+
+class TestTransposeBackward:
+    """Test backward pass for transpose."""
+
+    def test_transpose_backward_2d(self) -> None:
+        """Test backward for 2D transpose."""
+        import numpy as np
+
+        x = Tensor([[1.0, 2.0], [3.0, 4.0]], requires_grad=True)
+        y = x.transpose()
+        loss = y.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (2, 2)
+        np.testing.assert_allclose(x.grad.numpy(), [[1.0, 1.0], [1.0, 1.0]], atol=1e-6)
+
+    def test_transpose_backward_explicit_axes(self) -> None:
+        """Test backward for transpose with explicit axes."""
+        import numpy as np
+
+        x = Tensor([[[1.0, 2.0], [3.0, 4.0]], [[5.0, 6.0], [7.0, 8.0]]], requires_grad=True)
+        y = x.transpose(0, 2, 1)
+        loss = y.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (2, 2, 2)
+        np.testing.assert_allclose(x.grad.numpy(), np.ones((2, 2, 2)), atol=1e-6)
+
+    def test_transpose_backward_chained(self) -> None:
+        """Test backward for chained transposes."""
+        import numpy as np
+
+        x = Tensor([[1.0, 2.0], [3.0, 4.0]], requires_grad=True)
+        y = x.transpose()
+        z = y.transpose()
+        loss = z.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (2, 2)
+        np.testing.assert_allclose(x.grad.numpy(), [[1.0, 1.0], [1.0, 1.0]], atol=1e-6)
+
+    def test_transpose_backward_T_property(self) -> None:
+        """Test backward for T property (2D only)."""
+        import numpy as np
+
+        x = Tensor([[1.0, 2.0], [3.0, 4.0]], requires_grad=True)
+        y = x.T
+        loss = y.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (2, 2)
+        np.testing.assert_allclose(x.grad.numpy(), [[1.0, 1.0], [1.0, 1.0]], atol=1e-6)
+
+
+class TestSqueezeBackward:
+    """Test backward pass for squeeze."""
+
+    def test_squeeze_backward_default(self) -> None:
+        """Test backward for squeeze with default (remove all singleton dims)."""
+        import numpy as np
+
+        x = Tensor([[[1.0, 2.0]]], requires_grad=True)
+        y = x.squeeze()
+        loss = y.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (1, 1, 2)
+        np.testing.assert_allclose(x.grad.numpy(), [[[1.0, 1.0]]], atol=1e-6)
+
+    def test_squeeze_backward_axis(self) -> None:
+        """Test backward for squeeze with specified axis."""
+        import numpy as np
+
+        x = Tensor([[1.0, 2.0, 3.0]], requires_grad=True)
+        y = x.squeeze(axis=0)
+        loss = y.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (1, 3)
+        np.testing.assert_allclose(x.grad.numpy(), [[1.0, 1.0, 1.0]], atol=1e-6)
+
+    def test_squeeze_backward_multiple_singletons(self) -> None:
+        """Test backward for squeeze with multiple singleton dimensions."""
+        import numpy as np
+
+        x = Tensor([[[[1.0]]]], requires_grad=True)
+        y = x.squeeze()
+        loss = y.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (1, 1, 1, 1)
+        np.testing.assert_allclose(x.grad.numpy(), [[[[1.0]]]], atol=1e-6)
+
+    def test_squeeze_backward_no_op(self) -> None:
+        """Test backward for squeeze when no dimensions are removed."""
+        import numpy as np
+
+        x = Tensor([[1.0, 2.0], [3.0, 4.0]], requires_grad=True)
+        y = x.squeeze()
+        loss = y.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (2, 2)
+        np.testing.assert_allclose(x.grad.numpy(), [[1.0, 1.0], [1.0, 1.0]], atol=1e-6)
+
+
+class TestUnsqueezeBackward:
+    """Test backward pass for unsqueeze."""
+
+    def test_unsqueeze_backward_axis_0(self) -> None:
+        """Test backward for unsqueeze at axis 0."""
+        import numpy as np
+
+        x = Tensor([1.0, 2.0, 3.0], requires_grad=True)
+        y = x.unsqueeze(0)
+        loss = y.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (3,)
+        np.testing.assert_allclose(x.grad.numpy(), [1.0, 1.0, 1.0], atol=1e-6)
+
+    def test_unsqueeze_backward_axis_1(self) -> None:
+        """Test backward for unsqueeze at axis 1."""
+        import numpy as np
+
+        x = Tensor([1.0, 2.0, 3.0], requires_grad=True)
+        y = x.unsqueeze(1)
+        loss = y.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (3,)
+        np.testing.assert_allclose(x.grad.numpy(), [1.0, 1.0, 1.0], atol=1e-6)
+
+    def test_unsqueeze_backward_negative_axis(self) -> None:
+        """Test backward for unsqueeze with negative axis."""
+        import numpy as np
+
+        x = Tensor([1.0, 2.0, 3.0], requires_grad=True)
+        y = x.unsqueeze(-1)
+        loss = y.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (3,)
+        np.testing.assert_allclose(x.grad.numpy(), [1.0, 1.0, 1.0], atol=1e-6)
+
+    def test_unsqueeze_backward_chained(self) -> None:
+        """Test backward for chained unsqueeze operations."""
+        import numpy as np
+
+        x = Tensor([1.0, 2.0, 3.0], requires_grad=True)
+        y = x.unsqueeze(0)
+        z = y.unsqueeze(0)
+        loss = z.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (3,)
+        np.testing.assert_allclose(x.grad.numpy(), [1.0, 1.0, 1.0], atol=1e-6)
+
+
+class TestShapeOperationIntegration:
+    """Test integration of shape operations with other autograd features."""
+
+    def test_reshape_matmul_sum(self) -> None:
+        """Test reshape → matmul → sum → backward."""
+        import numpy as np
+
+        x = Tensor([1.0, 2.0, 3.0, 4.0], requires_grad=True)
+        y = x.reshape((2, 2))
+        z = y @ y
+        loss = z.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (4,)
+
+    def test_transpose_matmul_sum(self) -> None:
+        """Test transpose → matmul → sum → backward."""
+        import numpy as np
+
+        x = Tensor([[1.0, 2.0], [3.0, 4.0]], requires_grad=True)
+        y = x.transpose()
+        z = x @ y
+        loss = z.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (2, 2)
+
+    def test_squeeze_arithmetic_sum(self) -> None:
+        """Test squeeze → arithmetic → sum → backward."""
+        import numpy as np
+
+        x = Tensor([[1.0, 2.0, 3.0]], requires_grad=True)
+        y = x.squeeze()
+        z = y * 2
+        loss = z.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (1, 3)
+        np.testing.assert_allclose(x.grad.numpy(), [[2.0, 2.0, 2.0]], atol=1e-6)
+
+    def test_unsqueeze_reduction_sum(self) -> None:
+        """Test unsqueeze → reduction → sum → backward."""
+        import numpy as np
+
+        x = Tensor([1.0, 2.0, 3.0], requires_grad=True)
+        y = x.unsqueeze(0)
+        z = y.sum(axis=1)
+        loss = z.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (3,)
+        np.testing.assert_allclose(x.grad.numpy(), [1.0, 1.0, 1.0], atol=1e-6)
+
+    def test_shape_ops_accumulation(self) -> None:
+        """Test gradient accumulation with shape operations."""
+        import numpy as np
+
+        x = Tensor([[1.0, 2.0], [3.0, 4.0]], requires_grad=True)
+        a = x * 2
+        b = x.transpose()
+        c = a + b
+        loss = c.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (2, 2)
+        # Each element gets gradient from both paths
+        np.testing.assert_allclose(x.grad.numpy(), [[3.0, 3.0], [3.0, 3.0]], atol=1e-6)

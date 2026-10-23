@@ -341,12 +341,44 @@ class Tensor:
         else:
             target_shape = normalize_shape(shape)
         resolved_shape = resolve_inferred_shape(self.size, target_shape)
-        return Tensor._from_backend(self._backend.reshape(resolved_shape), requires_grad=self.requires_grad)
+        result = Tensor._from_backend(self._backend.reshape(resolved_shape), requires_grad=self.requires_grad)
+
+        # Attach autograd for reshape only if shape actually changes
+        from titan_ai.tensor.autograd.backward import backward_reshape
+        from titan_ai.tensor.autograd.graph import attach_grad_fn, should_build_graph
+
+        if should_build_graph(self) and resolved_shape != self.shape:
+            metadata = {"original_shape": self.shape}
+            result = attach_grad_fn(
+                result,
+                "reshape",
+                (self,),
+                backward_reshape,
+                metadata,
+            )
+
+        return result
 
     def transpose(self, *axes: int) -> "Tensor":
         """Return a tensor with permuted axes."""
         axis_tuple = tuple(axes) if axes else None
-        return Tensor._from_backend(self._backend.transpose_axes(axis_tuple), requires_grad=self.requires_grad)
+        result = Tensor._from_backend(self._backend.transpose_axes(axis_tuple), requires_grad=self.requires_grad)
+
+        # Attach autograd for transpose
+        from titan_ai.tensor.autograd.backward import backward_transpose
+        from titan_ai.tensor.autograd.graph import attach_grad_fn, should_build_graph
+
+        if should_build_graph(self):
+            metadata = {"axes": axis_tuple}
+            result = attach_grad_fn(
+                result,
+                "transpose",
+                (self,),
+                backward_transpose,
+                metadata,
+            )
+
+        return result
 
     def flatten(self) -> "Tensor":
         """Return a 1D copy of the tensor."""
@@ -354,11 +386,59 @@ class Tensor:
 
     def squeeze(self, axis: int | None = None) -> "Tensor":
         """Return a tensor with singleton dimensions removed."""
-        return Tensor._from_backend(self._backend.squeeze(axis=axis), requires_grad=self.requires_grad)
+        result = Tensor._from_backend(self._backend.squeeze(axis=axis), requires_grad=self.requires_grad)
+
+        # Attach autograd for squeeze
+        from titan_ai.tensor.autograd.backward import backward_squeeze
+        from titan_ai.tensor.autograd.graph import attach_grad_fn, should_build_graph
+
+        if should_build_graph(self):
+            # Determine which axes were squeezed
+            original_shape = self.shape
+            squeezed_axes = []
+            if axis is None:
+                # All singleton dimensions were removed
+                for i, dim in enumerate(original_shape):
+                    if dim == 1:
+                        squeezed_axes.append(i)
+            else:
+                # Specific axis was squeezed
+                squeezed_axes = [axis]
+
+            metadata = {
+                "axis": axis,
+                "original_shape": original_shape,
+                "squeezed_axes": squeezed_axes,
+            }
+            result = attach_grad_fn(
+                result,
+                "squeeze",
+                (self,),
+                backward_squeeze,
+                metadata,
+            )
+
+        return result
 
     def unsqueeze(self, axis: int) -> "Tensor":
         """Insert a singleton dimension at the given axis."""
-        return Tensor._from_backend(self._backend.unsqueeze(axis=axis), requires_grad=self.requires_grad)
+        result = Tensor._from_backend(self._backend.unsqueeze(axis=axis), requires_grad=self.requires_grad)
+
+        # Attach autograd for unsqueeze
+        from titan_ai.tensor.autograd.backward import backward_unsqueeze
+        from titan_ai.tensor.autograd.graph import attach_grad_fn, should_build_graph
+
+        if should_build_graph(self):
+            metadata = {"axis": axis}
+            result = attach_grad_fn(
+                result,
+                "unsqueeze",
+                (self,),
+                backward_unsqueeze,
+                metadata,
+            )
+
+        return result
 
     def sum(self, axis: int | tuple[int, ...] | None = None, *, keepdims: bool = False) -> "Tensor":
         """Return the sum of elements over the selected axis."""

@@ -1103,6 +1103,61 @@ These will be implemented in later Autograd phases as needed.
 
 ---
 
+# Autograd Shape Operation Gradients (Phase 4)
+
+**Status:** Implemented, tested.
+
+Phase 4 of the Autograd system implements reverse-mode gradients for shape operations: reshape, transpose, squeeze, and unsqueeze.
+
+## Reshape Gradients
+
+For `y = x.reshape(new_shape)`:
+- The gradient is reshaped back to the original input shape
+- Original shape is stored in metadata during forward pass
+- Supports all reshape forms: scalar, vector, matrix, and -1 inference
+- No-op reshapes (same shape) do not build a graph node
+
+## Transpose Gradients
+
+For `y = x.transpose(axes)`:
+- Default transpose (no arguments): gradients are transposed with inverse permutation (reverse dimensions)
+- Explicit axes permutation: gradients are transposed with the computed inverse permutation
+- Supports 2D transpose via `.T` property and N-D transpose with explicit axes
+- Inverse permutation formula: `axes_inv[axes[i]] = i`
+
+## Squeeze Gradients
+
+For `y = x.squeeze(axis)`:
+- Default behavior (no axis): gradient is reshaped to original shape using stored metadata
+- Specified axis: gradient is unsqueezed at the removed axis
+- Correctly handles multiple singleton dimensions
+
+## Unsqueeze Gradients
+
+For `y = x.unsqueeze(axis)`:
+- Gradient is squeezed at the inserted axis
+- Supports negative axes
+- Correctly handles chained unsqueeze operations
+
+## Integration
+
+All shape operation gradients:
+- Integrate with the existing computation graph and backward engine
+- Preserve gradient accumulation for multiple paths
+- Return gradients with exactly the same shape as the original input
+- Follow the existing metadata and graph-building conventions
+
+## Phase 4 Limitations
+
+The following are **not implemented** in Phase 4:
+
+- `min` and `max` gradients (deferred due to tie/subgradient semantics)
+- Higher-order derivatives
+- GPU backend integration
+- Numerical gradient checking for shape operations (deferred due to reshape complexity in gradient_check utility)
+
+---
+
 # Related Documentation
 
 - [`12_LLM_ARCHITECTURE.md`](12_LLM_ARCHITECTURE.md) — consumes tensor operations for model forward pass
@@ -1138,7 +1193,8 @@ These will be implemented in later Autograd phases as needed.
 | Math function gradients (Phase 3) | Documented | Implemented | Tested | — |
 | Tuple axes support (Phase 3) | Documented | Implemented | Tested | — |
 | Numerical gradient checking (Phase 3) | Documented | Implemented | Tested | — |
+| Shape operation gradients (Phase 4) | Documented | Implemented | Tested | — |
 
 This table must be updated as implementation progresses. Do not mark items complete until the project's completion criteria are met.
 
-Week 1 Tensor Library (CPU core, operations, tests, benchmark baseline) is complete. Autograd Phase 1 (state and graph construction) is complete. Autograd Phase 2 (backward engine for arithmetic operations) is complete. Autograd Phase 3 (matmul, reduction, and math gradients with tuple axes support) is complete. GPU backends, neural-network integration, and advanced autograd features (min/max gradients, shape operation gradients, higher-order derivatives) remain later-phase work.
+Week 1 Tensor Library (CPU core, operations, tests, benchmark baseline) is complete. Autograd Phase 1 (state and graph construction) is complete. Autograd Phase 2 (backward engine for arithmetic operations) is complete. Autograd Phase 3 (matmul, reduction, and math gradients with tuple axes support) is complete. Autograd Phase 4 (reshape, transpose, squeeze, unsqueeze gradients) is complete. GPU backends, neural-network integration, and advanced autograd features (min/max gradients, higher-order derivatives) remain later-phase work.
