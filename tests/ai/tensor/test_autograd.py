@@ -1142,6 +1142,59 @@ class TestSqueezeBackward:
         assert x.grad.shape == (2, 2)
         np.testing.assert_allclose(x.grad.numpy(), [[1.0, 1.0], [1.0, 1.0]], atol=1e-6)
 
+    def test_squeeze_backward_shape_1_3_1(self) -> None:
+        """Test backward for squeeze on shape (1, 3, 1)."""
+        import numpy as np
+
+        x = Tensor([[[1.0], [2.0], [3.0]]], requires_grad=True)
+        y = x.squeeze()
+        loss = y.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (1, 3, 1)
+        np.testing.assert_allclose(x.grad.numpy(), [[[1.0], [1.0], [1.0]]], atol=1e-6)
+
+    def test_squeeze_backward_shape_1_1_3_1(self) -> None:
+        """Test backward for squeeze on shape (1, 1, 3, 1)."""
+        import numpy as np
+
+        x = Tensor([[[[1.0], [2.0], [3.0]]]], requires_grad=True)
+        y = x.squeeze()
+        loss = y.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (1, 1, 3, 1)
+        np.testing.assert_allclose(x.grad.numpy(), [[[[1.0], [1.0], [1.0]]]], atol=1e-6)
+
+    def test_squeeze_backward_axis_multiple_singletons(self) -> None:
+        """Test backward for explicit axis on tensor with multiple singleton dimensions."""
+        import numpy as np
+
+        x = Tensor([[[1.0], [2.0], [3.0]]], requires_grad=True)
+        y = x.squeeze(axis=0)
+        loss = y.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (1, 3, 1)
+        np.testing.assert_allclose(x.grad.numpy(), [[[1.0], [1.0], [1.0]]], atol=1e-6)
+
+    def test_squeeze_backward_with_non_uniform_gradient(self) -> None:
+        """Test backward for squeeze with non-uniform incoming gradient."""
+        import numpy as np
+
+        x = Tensor([[1.0, 2.0, 3.0]], requires_grad=True)
+        y = x.squeeze()
+        z = y * Tensor([1.0, 2.0, 3.0])
+        loss = z.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (1, 3)
+        np.testing.assert_allclose(x.grad.numpy(), [[1.0, 2.0, 3.0]], atol=1e-6)
+
 
 class TestUnsqueezeBackward:
     """Test backward pass for unsqueeze."""
