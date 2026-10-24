@@ -1306,3 +1306,119 @@ Autograd features not yet implemented:
 - GPU backend integration
 
 These will be implemented in later phases as neural network modules require them.
+
+---
+
+## Date
+
+2026-10-24
+
+---
+
+### Session Goal
+
+Implement Autograd Phase 5: Min/Max reduction gradients with equal-split tie policy.
+
+---
+
+### Implementation Overview
+
+Implemented backward pass support for minimum and maximum reductions:
+
+1. **Tie-handling policy**: When k elements are tied for the extremum within a reduction group, the incoming gradient g is split equally among all tied extrema. Each tied extremum receives g/k, and all non-extremum elements receive zero gradient.
+
+2. **Min gradients** (`backward_min`)
+   - Global minimum (axis=None): all elements tied for global minimum in same tie group
+   - Axis-based reduction: tied minima counted independently within each reduction group
+   - Supports axis=None, single axis, tuple axes, keepdims=True/False
+   - Vectorized implementation using NumPy boolean masks
+
+3. **Max gradients** (`backward_max`)
+   - Global maximum (axis=None): all elements tied for global maximum in same tie group
+   - Axis-based reduction: tied maxima counted independently within each reduction group
+   - Supports axis=None, single axis, tuple axes, keepdims=True/False
+   - Vectorized implementation using NumPy boolean masks
+
+---
+
+### Key Architectural Decisions
+
+1. **Equal-split tie policy**: Deliberate subgradient convention at tie points, not a claim that ordinary derivative exists there.
+
+2. **Vectorized implementation**: Uses NumPy boolean masks and `np.where` to avoid Python loops over individual elements.
+
+3. **Division safety**: Uses `np.errstate(divide='ignore', invalid='ignore')` to handle potential division by zero gracefully, then replaces NaN with 0.
+
+4. **Metadata**: Stores original_shape, reduced_axes, and keepdims during forward pass for backward reconstruction.
+
+5. **Integration**: Follows existing reduction architecture (sum/mean pattern) for consistency.
+
+---
+
+### Files Modified
+
+- `titan_ai/tensor/autograd/backward.py` - Added backward_min, backward_max (154 lines)
+- `titan_ai/tensor/operations/reductions.py` - Integrated min/max with graph building (43 lines)
+- `tests/ai/tensor/test_autograd.py` - Added 24 new tests (9 min, 9 max, 6 integration)
+- `docs/04_AI/19_TENSOR_LIBRARY.md` - Added Phase 5 documentation section
+- `docs/01_PROJECT/DAILY_ENGINEERING_LOG.md` - This entry
+
+---
+
+### Test Results
+
+```
+tests/ai/tensor/test_autograd.py: 130 passed
+tests/ai/tensor/ (all tests): 421 passed
+```
+
+All tests pass, including:
+- 9 min gradient tests (unique, tied, all equal, negative, axis 0, axis 1, keepdims, tuple axes, tied axis)
+- 9 max gradient tests (unique, tied, all equal, negative, axis 0, axis 1, keepdims, tuple axes, tied axis)
+- 6 integration tests (min/max with arithmetic, reshape, transpose, accumulation)
+
+---
+
+### Verification Steps Completed
+
+1. ✅ Phase 4 baseline passes (106 autograd tests)
+2. ✅ Min gradients work (global, axis-based, keepdims, tuple axes)
+3. ✅ Max gradients work (global, axis-based, keepdims, tuple axes)
+4. ✅ Tie-handling policy verified (equal split at ties)
+5. ✅ Integration with arithmetic operations
+6. ✅ Integration with shape operations
+7. ✅ Gradient accumulation still works
+8. ✅ No second graph is created
+9. ✅ Gradient shapes are correct
+10. ✅ Full test suite passes (421 tests)
+11. ✅ Documentation updated
+
+---
+
+### Documentation Updated
+
+- `docs/04_AI/19_TENSOR_LIBRARY.md` - Added Autograd Min/Max Reduction Gradients (Phase 5) section with:
+  - Tie-handling policy explanation
+  - Min gradient details
+  - Max gradient details
+  - Implementation details
+  - Integration notes
+  - Updated implementation status table
+- `docs/01_PROJECT/DAILY_ENGINEERING_LOG.md` - This entry
+
+---
+
+### Next Engineering Goal
+
+Consider higher-order derivatives or move to neural network layer implementations.
+
+---
+
+### Remaining Work
+
+Autograd features not yet implemented:
+
+- Higher-order derivatives
+- GPU backend integration
+
+These will be implemented in later phases as neural network modules require them.

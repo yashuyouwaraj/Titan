@@ -1325,3 +1325,366 @@ class TestShapeOperationIntegration:
         assert x.grad.shape == (2, 2)
         # Each element gets gradient from both paths
         np.testing.assert_allclose(x.grad.numpy(), [[3.0, 3.0], [3.0, 3.0]], atol=1e-6)
+
+
+class TestMinBackward:
+    """Test backward pass for min reduction."""
+
+    def test_min_backward_unique(self) -> None:
+        """Test backward for min with unique minimum."""
+        import numpy as np
+
+        x = Tensor([1.0, 3.0, 2.0, 4.0], requires_grad=True)
+        y = x.min()
+        loss = y.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (4,)
+        # Only the minimum element (1.0) gets gradient
+        np.testing.assert_allclose(x.grad.numpy(), [1.0, 0.0, 0.0, 0.0], atol=1e-6)
+
+    def test_min_backward_tied(self) -> None:
+        """Test backward for min with tied minima."""
+        import numpy as np
+
+        x = Tensor([1.0, 3.0, 1.0, 2.0], requires_grad=True)
+        y = x.min()
+        loss = y.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (4,)
+        # Both minima (1.0, 1.0) split the gradient equally
+        np.testing.assert_allclose(x.grad.numpy(), [0.5, 0.0, 0.5, 0.0], atol=1e-6)
+
+    def test_min_backward_all_equal(self) -> None:
+        """Test backward for min when all elements are equal."""
+        import numpy as np
+
+        x = Tensor([2.0, 2.0, 2.0, 2.0], requires_grad=True)
+        y = x.min()
+        loss = y.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (4,)
+        # All elements split the gradient equally
+        np.testing.assert_allclose(x.grad.numpy(), [0.25, 0.25, 0.25, 0.25], atol=1e-6)
+
+    def test_min_backward_negative(self) -> None:
+        """Test backward for min with negative values."""
+        import numpy as np
+
+        x = Tensor([-5.0, 3.0, -2.0, 4.0], requires_grad=True)
+        y = x.min()
+        loss = y.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (4,)
+        # Only the minimum element (-5.0) gets gradient
+        np.testing.assert_allclose(x.grad.numpy(), [1.0, 0.0, 0.0, 0.0], atol=1e-6)
+
+    def test_min_backward_axis_0(self) -> None:
+        """Test backward for min along axis 0."""
+        import numpy as np
+
+        x = Tensor([[1.0, 5.0], [3.0, 2.0]], requires_grad=True)
+        y = x.min(axis=0)
+        loss = y.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (2, 2)
+        # Column 0: min is 1.0 at [0,0]
+        # Column 1: min is 2.0 at [1,1]
+        np.testing.assert_allclose(x.grad.numpy(), [[1.0, 0.0], [0.0, 1.0]], atol=1e-6)
+
+    def test_min_backward_axis_1(self) -> None:
+        """Test backward for min along axis 1."""
+        import numpy as np
+
+        x = Tensor([[1.0, 5.0], [3.0, 2.0]], requires_grad=True)
+        y = x.min(axis=1)
+        loss = y.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (2, 2)
+        # Row 0: min is 1.0 at [0,0]
+        # Row 1: min is 2.0 at [1,1]
+        np.testing.assert_allclose(x.grad.numpy(), [[1.0, 0.0], [0.0, 1.0]], atol=1e-6)
+
+    def test_min_backward_keepdims(self) -> None:
+        """Test backward for min with keepdims=True."""
+        import numpy as np
+
+        x = Tensor([[1.0, 5.0], [3.0, 2.0]], requires_grad=True)
+        y = x.min(axis=0, keepdims=True)
+        loss = y.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (2, 2)
+        np.testing.assert_allclose(x.grad.numpy(), [[1.0, 0.0], [0.0, 1.0]], atol=1e-6)
+
+    def test_min_backward_tuple_axes(self) -> None:
+        """Test backward for min with tuple axes."""
+        import numpy as np
+
+        x = Tensor([[[1.0, 5.0], [3.0, 2.0]], [[4.0, 6.0], [7.0, 8.0]]], requires_grad=True)
+        y = x.min(axis=(0, 1))
+        loss = y.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (2, 2, 2)
+        # y[0] = min over axes 0,1 of x[:,:,0] = 1.0 at [0,0,0]
+        # y[1] = min over axes 0,1 of x[:,:,1] = 2.0 at [0,1,1]
+        np.testing.assert_allclose(x.grad.numpy(), [[[1.0, 0.0], [0.0, 1.0]], [[0.0, 0.0], [0.0, 0.0]]], atol=1e-6)
+
+    def test_min_backward_tied_axis(self) -> None:
+        """Test backward for min with tied minima along axis."""
+        import numpy as np
+
+        x = Tensor([[1.0, 5.0], [1.0, 2.0]], requires_grad=True)
+        y = x.min(axis=0)
+        loss = y.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (2, 2)
+        # Column 0: min is 1.0, tied at [0,0] and [1,0], each gets 0.5
+        # Column 1: min is 2.0 at [1,1]
+        np.testing.assert_allclose(x.grad.numpy(), [[0.5, 0.0], [0.5, 1.0]], atol=1e-6)
+
+
+class TestMaxBackward:
+    """Test backward pass for max reduction."""
+
+    def test_max_backward_unique(self) -> None:
+        """Test backward for max with unique maximum."""
+        import numpy as np
+
+        x = Tensor([1.0, 3.0, 2.0, 4.0], requires_grad=True)
+        y = x.max()
+        loss = y.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (4,)
+        # Only the maximum element (4.0) gets gradient
+        np.testing.assert_allclose(x.grad.numpy(), [0.0, 0.0, 0.0, 1.0], atol=1e-6)
+
+    def test_max_backward_tied(self) -> None:
+        """Test backward for max with tied maxima."""
+        import numpy as np
+
+        x = Tensor([1.0, 3.0, 3.0, 2.0], requires_grad=True)
+        y = x.max()
+        loss = y.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (4,)
+        # Both maxima (3.0, 3.0) split the gradient equally
+        np.testing.assert_allclose(x.grad.numpy(), [0.0, 0.5, 0.5, 0.0], atol=1e-6)
+
+    def test_max_backward_all_equal(self) -> None:
+        """Test backward for max when all elements are equal."""
+        import numpy as np
+
+        x = Tensor([2.0, 2.0, 2.0, 2.0], requires_grad=True)
+        y = x.max()
+        loss = y.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (4,)
+        # All elements split the gradient equally
+        np.testing.assert_allclose(x.grad.numpy(), [0.25, 0.25, 0.25, 0.25], atol=1e-6)
+
+    def test_max_backward_negative(self) -> None:
+        """Test backward for max with negative values."""
+        import numpy as np
+
+        x = Tensor([-5.0, 3.0, -2.0, 4.0], requires_grad=True)
+        y = x.max()
+        loss = y.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (4,)
+        # Only the maximum element (4.0) gets gradient
+        np.testing.assert_allclose(x.grad.numpy(), [0.0, 0.0, 0.0, 1.0], atol=1e-6)
+
+    def test_max_backward_axis_0(self) -> None:
+        """Test backward for max along axis 0."""
+        import numpy as np
+
+        x = Tensor([[1.0, 5.0], [3.0, 2.0]], requires_grad=True)
+        y = x.max(axis=0)
+        loss = y.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (2, 2)
+        # Column 0: max is 3.0 at [1,0]
+        # Column 1: max is 5.0 at [0,1]
+        np.testing.assert_allclose(x.grad.numpy(), [[0.0, 1.0], [1.0, 0.0]], atol=1e-6)
+
+    def test_max_backward_axis_1(self) -> None:
+        """Test backward for max along axis 1."""
+        import numpy as np
+
+        x = Tensor([[1.0, 5.0], [3.0, 2.0]], requires_grad=True)
+        y = x.max(axis=1)
+        loss = y.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (2, 2)
+        # Row 0: max is 5.0 at [0,1]
+        # Row 1: max is 3.0 at [1,0]
+        np.testing.assert_allclose(x.grad.numpy(), [[0.0, 1.0], [1.0, 0.0]], atol=1e-6)
+
+    def test_max_backward_keepdims(self) -> None:
+        """Test backward for max with keepdims=True."""
+        import numpy as np
+
+        x = Tensor([[1.0, 5.0], [3.0, 2.0]], requires_grad=True)
+        y = x.max(axis=0, keepdims=True)
+        loss = y.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (2, 2)
+        np.testing.assert_allclose(x.grad.numpy(), [[0.0, 1.0], [1.0, 0.0]], atol=1e-6)
+
+    def test_max_backward_tuple_axes(self) -> None:
+        """Test backward for max with tuple axes."""
+        import numpy as np
+
+        x = Tensor([[[1.0, 5.0], [3.0, 2.0]], [[4.0, 6.0], [7.0, 8.0]]], requires_grad=True)
+        y = x.max(axis=(0, 1))
+        loss = y.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (2, 2, 2)
+        # y[0] = max over axes 0,1 of x[:,:,0] = 7.0 at [1,1,0]
+        # y[1] = max over axes 0,1 of x[:,:,1] = 8.0 at [1,1,1]
+        np.testing.assert_allclose(x.grad.numpy(), [[[0.0, 0.0], [0.0, 0.0]], [[0.0, 0.0], [1.0, 1.0]]], atol=1e-6)
+
+    def test_max_backward_tied_axis(self) -> None:
+        """Test backward for max with tied maxima along axis."""
+        import numpy as np
+
+        x = Tensor([[1.0, 5.0], [3.0, 5.0]], requires_grad=True)
+        y = x.max(axis=0)
+        loss = y.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (2, 2)
+        # Column 0: max is 3.0 at [1,0]
+        # Column 1: max is 5.0, tied at [0,1] and [1,1], each gets 0.5
+        np.testing.assert_allclose(x.grad.numpy(), [[0.0, 0.5], [1.0, 0.5]], atol=1e-6)
+
+
+class TestMinMaxIntegration:
+    """Test integration of min/max with other autograd features."""
+
+    def test_min_arithmetic(self) -> None:
+        """Test min → arithmetic → backward."""
+        import numpy as np
+
+        x = Tensor([1.0, 3.0, 2.0, 4.0], requires_grad=True)
+        y = x.min()
+        z = y * 2
+        loss = z.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (4,)
+        np.testing.assert_allclose(x.grad.numpy(), [2.0, 0.0, 0.0, 0.0], atol=1e-6)
+
+    def test_max_arithmetic(self) -> None:
+        """Test max → arithmetic → backward."""
+        import numpy as np
+
+        x = Tensor([1.0, 3.0, 2.0, 4.0], requires_grad=True)
+        y = x.max()
+        z = y * 2
+        loss = z.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (4,)
+        np.testing.assert_allclose(x.grad.numpy(), [0.0, 0.0, 0.0, 2.0], atol=1e-6)
+
+    def test_min_reshape(self) -> None:
+        """Test reshape → min → backward."""
+        import numpy as np
+
+        x = Tensor([1.0, 3.0, 2.0, 4.0], requires_grad=True)
+        y = x.reshape((2, 2))
+        z = y.min()
+        loss = z.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (4,)
+        np.testing.assert_allclose(x.grad.numpy(), [1.0, 0.0, 0.0, 0.0], atol=1e-6)
+
+    def test_max_transpose(self) -> None:
+        """Test transpose → max → backward."""
+        import numpy as np
+
+        x = Tensor([[1.0, 5.0], [3.0, 2.0]], requires_grad=True)
+        y = x.transpose()
+        z = y.max()
+        loss = z.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (2, 2)
+        # Max of transpose is 5.0 at [1,0] in y, which is [0,1] in x
+        np.testing.assert_allclose(x.grad.numpy(), [[0.0, 1.0], [0.0, 0.0]], atol=1e-6)
+
+    def test_min_accumulation(self) -> None:
+        """Test gradient accumulation with min."""
+        import numpy as np
+
+        x = Tensor([1.0, 3.0, 2.0, 4.0], requires_grad=True)
+        a = x.min()
+        b = x * 2
+        c = a + b
+        loss = c.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (4,)
+        # min path: d(loss)/da = 4, d(a)/dx = [1, 0, 0, 0], so [4, 0, 0, 0]
+        # mul path: d(loss)/db = [1, 1, 1, 1], d(b)/dx = 2, so [2, 2, 2, 2]
+        # total: [6, 2, 2, 2]
+        np.testing.assert_allclose(x.grad.numpy(), [6.0, 2.0, 2.0, 2.0], atol=1e-6)
+
+    def test_max_accumulation(self) -> None:
+        """Test gradient accumulation with max."""
+        import numpy as np
+
+        x = Tensor([1.0, 3.0, 2.0, 4.0], requires_grad=True)
+        a = x.max()
+        b = x * 2
+        c = a + b
+        loss = c.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == (4,)
+        # max path: d(loss)/da = 4, d(a)/dx = [0, 0, 0, 1], so [0, 0, 0, 4]
+        # mul path: d(loss)/db = [1, 1, 1, 1], d(b)/dx = 2, so [2, 2, 2, 2]
+        # total: [2, 2, 2, 6]
+        np.testing.assert_allclose(x.grad.numpy(), [2.0, 2.0, 2.0, 6.0], atol=1e-6)

@@ -1158,6 +1158,80 @@ The following are **not implemented** in Phase 4:
 
 ---
 
+# Autograd Min/Max Reduction Gradients (Phase 5)
+
+**Status:** Implemented, tested.
+
+Phase 5 of the Autograd system implements reverse-mode gradients for minimum and maximum reductions.
+
+## Tie-Handling Policy
+
+Minimum and maximum reductions are not differentiable in the ordinary sense when multiple elements tie for the extremum. Titan AI adopts the following subgradient convention:
+
+**Equal-split policy:** When k elements are tied for the extremum within a reduction group, the incoming gradient g is split equally among all tied extrema. Each tied extremum receives g/k, and all non-extremum elements receive zero gradient.
+
+For example:
+```python
+x = Tensor([1.0, 3.0, 3.0, 2.0], requires_grad=True)
+y = x.max()
+y.backward()
+# x.grad = [0.0, 0.5, 0.5, 0.0]
+```
+
+This is a deliberate subgradient convention at tie points, not a claim that the ordinary derivative exists there.
+
+## Min Gradients
+
+For `y = x.min(axis, keepdims)`:
+- Global minimum (axis=None): all elements tied for the global minimum participate in the same tie group
+- Axis-based reduction: tied minima are counted independently within each reduction group
+- Gradient distributed equally among tied minima in each group
+- Non-minimum elements receive zero gradient
+- Supports axis=None, single axis, tuple axes, keepdims=True/False
+
+## Max Gradients
+
+For `y = x.max(axis, keepdims)`:
+- Global maximum (axis=None): all elements tied for the global maximum participate in the same tie group
+- Axis-based reduction: tied maxima are counted independently within each reduction group
+- Gradient distributed equally among tied maxima in each group
+- Non-maximum elements receive zero gradient
+- Supports axis=None, single axis, tuple axes, keepdims=True/False
+
+## Implementation Details
+
+The backward implementation uses vectorized NumPy operations:
+- Computes the extremum value in each reduction group
+- Builds a boolean mask of elements equal to the extremum
+- Counts tied extrema in each group
+- Distributes gradient equally: `grad / num_tied` where mask is True, else 0
+- Handles division by zero gracefully with `np.errstate`
+- Restores gradient to original input shape
+
+Metadata stored during forward pass:
+- `original_shape`: original input tensor shape
+- `reduced_axes`: normalized reduction axes
+- `keepdims`: whether reduced dimensions were retained
+
+## Integration
+
+Min/max gradients:
+- Integrate with the existing computational graph and backward engine
+- Preserve gradient accumulation for multiple paths
+- Return gradients with exactly the same shape as the original input
+- Follow the existing metadata and graph-building conventions
+- Compose correctly with arithmetic, matmul, shape operations, and other reductions
+
+## Phase 5 Limitations
+
+The following are **not implemented** in Phase 5:
+
+- Higher-order derivatives
+- GPU backend integration
+- Numerical gradient checking for min/max (deferred due to nondifferentiability at tie points)
+
+---
+
 # Related Documentation
 
 - [`12_LLM_ARCHITECTURE.md`](12_LLM_ARCHITECTURE.md) — consumes tensor operations for model forward pass
@@ -1194,7 +1268,8 @@ The following are **not implemented** in Phase 4:
 | Tuple axes support (Phase 3) | Documented | Implemented | Tested | — |
 | Numerical gradient checking (Phase 3) | Documented | Implemented | Tested | — |
 | Shape operation gradients (Phase 4) | Documented | Implemented | Tested | — |
+| Min/max reduction gradients (Phase 5) | Documented | Implemented | Tested | — |
 
 This table must be updated as implementation progresses. Do not mark items complete until the project's completion criteria are met.
 
-Week 1 Tensor Library (CPU core, operations, tests, benchmark baseline) is complete. Autograd Phase 1 (state and graph construction) is complete. Autograd Phase 2 (backward engine for arithmetic operations) is complete. Autograd Phase 3 (matmul, reduction, and math gradients with tuple axes support) is complete. Autograd Phase 4 (reshape, transpose, squeeze, unsqueeze gradients) is complete. GPU backends, neural-network integration, and advanced autograd features (min/max gradients, higher-order derivatives) remain later-phase work.
+Week 1 Tensor Library (CPU core, operations, tests, benchmark baseline) is complete. Autograd Phase 1 (state and graph construction) is complete. Autograd Phase 2 (backward engine for arithmetic operations) is complete. Autograd Phase 3 (matmul, reduction, and math gradients with tuple axes support) is complete. Autograd Phase 4 (reshape, transpose, squeeze, unsqueeze gradients) is complete. Autograd Phase 5 (min/max reduction gradients with equal-split tie policy) is complete. GPU backends, neural-network integration, and advanced autograd features (higher-order derivatives) remain later-phase work.

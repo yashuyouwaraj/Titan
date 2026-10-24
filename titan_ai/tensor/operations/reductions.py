@@ -69,24 +69,37 @@ def _reduce(
     result_backend = backend_method(normalized_axis, keepdims, result_dtype)
     result = Tensor._from_backend(result_backend, requires_grad=tensor.requires_grad)
 
-    # Attach autograd for sum and mean
-    if operation in ("sum", "mean") and tensor.requires_grad:
-        from titan_ai.tensor.autograd.backward import backward_sum, backward_mean
+    # Attach autograd for sum, mean, min, and max
+    if operation in ("sum", "mean", "min", "max") and tensor.requires_grad:
+        from titan_ai.tensor.autograd.backward import (
+            backward_sum,
+            backward_mean,
+            backward_min,
+            backward_max,
+        )
         from titan_ai.tensor.autograd.graph import attach_grad_fn, should_build_graph
 
         if should_build_graph(tensor):
             # Calculate metadata for backward
             original_shape = tensor.shape
             reduced_axes = _get_reduced_axes(tensor.ndim, normalized_axis)
-            reduction_size = _get_reduction_size(tensor.shape, normalized_axis)
 
-            metadata = {
-                "original_shape": original_shape,
-                "reduced_axes": reduced_axes,
-                "reduction_size": reduction_size,
-            }
+            if operation in ("sum", "mean"):
+                reduction_size = _get_reduction_size(tensor.shape, normalized_axis)
+                metadata = {
+                    "original_shape": original_shape,
+                    "reduced_axes": reduced_axes,
+                    "reduction_size": reduction_size,
+                }
+                backward_fn = backward_sum if operation == "sum" else backward_mean
+            else:  # min or max
+                metadata = {
+                    "original_shape": original_shape,
+                    "reduced_axes": reduced_axes,
+                    "keepdims": keepdims,
+                }
+                backward_fn = backward_min if operation == "min" else backward_max
 
-            backward_fn = backward_sum if operation == "sum" else backward_mean
             result = attach_grad_fn(
                 result,
                 operation,

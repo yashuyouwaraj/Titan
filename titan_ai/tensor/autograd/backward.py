@@ -622,6 +622,154 @@ def backward_squeeze(
     return None
 
 
+def backward_min(
+    grad_output: "Tensor",
+    x: "Tensor | None",
+    metadata: dict | None = None,
+) -> "Tensor | None":
+    """Backward pass for min reduction.
+
+    For y = min(x):
+    The gradient is distributed equally among all elements tied for the minimum.
+    Non-minimum elements receive zero gradient.
+
+    Tie policy: If k elements are tied for the minimum in a reduction group,
+    each receives grad_output / k.
+
+    Args:
+        grad_output: Gradient flowing back from the output.
+        x: Input tensor (may be None if garbage collected).
+        metadata: Optional metadata with original shape and reduction parameters.
+
+    Returns:
+        Gradient for x, or None if x was None or doesn't require gradients.
+    """
+    if x is not None and x.requires_grad:
+        import numpy as np
+        from titan_ai.tensor.core.tensor import Tensor
+
+        original_shape = metadata.get("original_shape") if metadata else x.shape
+        reduced_axes = metadata.get("reduced_axes") if metadata else None
+        keepdims = metadata.get("keepdims", False) if metadata else False
+
+        # Get the input data for mask computation
+        x_np = x.numpy()
+
+        # Find the minimum value in each reduction group
+        if reduced_axes is None:
+            # Global minimum
+            min_val = np.min(x_np)
+            # Mask of elements equal to global minimum
+            is_min = (x_np == min_val)
+            # Count tied minima
+            num_tied = np.sum(is_min)
+            # Distribute gradient equally
+            grad_np = np.zeros_like(x_np)
+            if num_tied > 0:
+                grad_np[is_min] = grad_output.numpy() / num_tied
+        else:
+            # Axis-based reduction
+            # For each reduction group, find the minimum and count ties
+            min_val = np.min(x_np, axis=tuple(reduced_axes), keepdims=True)
+            is_min = (x_np == min_val)
+
+            # Count tied minima in each reduction group
+            num_tied = np.sum(is_min, axis=tuple(reduced_axes), keepdims=True)
+
+            # Distribute gradient equally among tied minima
+            # First broadcast grad_output to the shape with keepdims
+            grad_broadcast = grad_output.numpy()
+            if not keepdims:
+                # Need to unsqueeze reduced axes to match keepdims shape
+                for axis in sorted(reduced_axes):
+                    grad_broadcast = np.expand_dims(grad_broadcast, axis=axis)
+
+            # Distribute: grad / num_tied where is_min, else 0
+            grad_np = np.zeros_like(x_np)
+            # Avoid division by zero
+            with np.errstate(divide='ignore', invalid='ignore'):
+                grad_np = np.where(is_min, grad_broadcast / num_tied, 0.0)
+            grad_np[np.isnan(grad_np)] = 0.0
+
+        grad = Tensor(grad_np, dtype=grad_output.dtype, device=grad_output.device, requires_grad=False)
+        return grad
+    return None
+
+
+def backward_max(
+    grad_output: "Tensor",
+    x: "Tensor | None",
+    metadata: dict | None = None,
+) -> "Tensor | None":
+    """Backward pass for max reduction.
+
+    For y = max(x):
+    The gradient is distributed equally among all elements tied for the maximum.
+    Non-maximum elements receive zero gradient.
+
+    Tie policy: If k elements are tied for the maximum in a reduction group,
+    each receives grad_output / k.
+
+    Args:
+        grad_output: Gradient flowing back from the output.
+        x: Input tensor (may be None if garbage collected).
+        metadata: Optional metadata with original shape and reduction parameters.
+
+    Returns:
+        Gradient for x, or None if x was None or doesn't require gradients.
+    """
+    if x is not None and x.requires_grad:
+        import numpy as np
+        from titan_ai.tensor.core.tensor import Tensor
+
+        original_shape = metadata.get("original_shape") if metadata else x.shape
+        reduced_axes = metadata.get("reduced_axes") if metadata else None
+        keepdims = metadata.get("keepdims", False) if metadata else False
+
+        # Get the input data for mask computation
+        x_np = x.numpy()
+
+        # Find the maximum value in each reduction group
+        if reduced_axes is None:
+            # Global maximum
+            max_val = np.max(x_np)
+            # Mask of elements equal to global maximum
+            is_max = (x_np == max_val)
+            # Count tied maxima
+            num_tied = np.sum(is_max)
+            # Distribute gradient equally
+            grad_np = np.zeros_like(x_np)
+            if num_tied > 0:
+                grad_np[is_max] = grad_output.numpy() / num_tied
+        else:
+            # Axis-based reduction
+            # For each reduction group, find the maximum and count ties
+            max_val = np.max(x_np, axis=tuple(reduced_axes), keepdims=True)
+            is_max = (x_np == max_val)
+
+            # Count tied maxima in each reduction group
+            num_tied = np.sum(is_max, axis=tuple(reduced_axes), keepdims=True)
+
+            # Distribute gradient equally among tied maxima
+            # First broadcast grad_output to the shape with keepdims
+            grad_broadcast = grad_output.numpy()
+            if not keepdims:
+                # Need to unsqueeze reduced axes to match keepdims shape
+                for axis in sorted(reduced_axes):
+                    grad_broadcast = np.expand_dims(grad_broadcast, axis=axis)
+
+            # Distribute: grad / num_tied where is_max, else 0
+            grad_np = np.zeros_like(x_np)
+            # Avoid division by zero
+            with np.errstate(divide='ignore', invalid='ignore'):
+                grad_np = np.where(is_max, grad_broadcast / num_tied, 0.0)
+            grad_np[np.isnan(grad_np)] = 0.0
+
+        grad = Tensor(grad_np, dtype=grad_output.dtype, device=grad_output.device, requires_grad=False)
+        return grad
+    return None
+
+
 def backward_unsqueeze(
     grad_output: "Tensor",
     x: "Tensor | None",
