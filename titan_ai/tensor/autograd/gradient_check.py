@@ -34,10 +34,6 @@ def numerical_gradient(
     # Disable tracking during numerical gradient computation
     was_tracking = disable_tracking()
 
-    # Temporarily disable requires_grad on x
-    original_requires_grad = x._requires_grad
-    x._requires_grad = False
-
     try:
         # Iterate over each element
         for idx in np.ndindex(x_np.shape):
@@ -56,10 +52,9 @@ def numerical_gradient(
             # Central difference
             grad_np[idx] = (f_plus.numpy() - f_minus.numpy()) / (2 * eps)
     finally:
-        # Restore tracking state and requires_grad
+        # Restore tracking state
         if was_tracking:
             enable_tracking()
-        x._requires_grad = original_requires_grad
 
     return grad_np
 
@@ -84,7 +79,14 @@ def check_gradient(
     Returns:
         True if gradients match within tolerance, False otherwise.
     """
-    # Compute analytical gradient
+    # Store original grad
+    original_grad = x._grad
+
+    # Ensure requires_grad is set for analytical computation
+    original_requires_grad = x._requires_grad
+    x._requires_grad = True
+
+    # Compute analytical gradient with tracking enabled
     y = func(x)
     y.backward()
     analytical_grad = x.grad
@@ -94,10 +96,11 @@ def check_gradient(
     # Store analytical gradient
     analytical_grad_np = analytical_grad.numpy().copy()
 
-    # Clear gradient for numerical check
-    x._grad = None
+    # Restore original grad and requires_grad
+    x._grad = original_grad
+    x._requires_grad = original_requires_grad
 
-    # Compute numerical gradient
+    # Compute numerical gradient with tracking disabled
     numerical_grad_np = numerical_gradient(func, x, eps=eps)
 
     # Compare
@@ -125,7 +128,14 @@ def max_gradient_error(
     Returns:
         Tuple of (max_absolute_error, max_relative_error).
     """
-    # Compute analytical gradient
+    # Store original grad
+    original_grad = x._grad
+
+    # Ensure requires_grad is set for analytical computation
+    original_requires_grad = x._requires_grad
+    x._requires_grad = True
+
+    # Compute analytical gradient with tracking enabled
     y = func(x)
     y.backward()
     analytical_grad = x.grad
@@ -135,10 +145,11 @@ def max_gradient_error(
     # Store analytical gradient
     analytical_grad_np = analytical_grad.numpy().copy()
 
-    # Clear gradient for numerical check
-    x._grad = None
+    # Restore original grad and requires_grad
+    x._grad = original_grad
+    x._requires_grad = original_requires_grad
 
-    # Compute numerical gradient
+    # Compute numerical gradient with tracking disabled
     numerical_grad_np = numerical_gradient(func, x, eps=eps)
 
     # Compute errors

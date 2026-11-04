@@ -1688,3 +1688,38 @@ class TestMinMaxIntegration:
         # mul path: d(loss)/db = [1, 1, 1, 1], d(b)/dx = 2, so [2, 2, 2, 2]
         # total: [2, 2, 2, 6]
         np.testing.assert_allclose(x.grad.numpy(), [2.0, 2.0, 2.0, 6.0], atol=1e-6)
+
+
+class TestNumericalGradientChecker:
+    """Test numerical gradient checking utility."""
+
+    def test_simple_sum(self) -> None:
+        """Test numerical gradient for simple sum."""
+        from titan_ai.tensor.autograd.gradient_check import check_gradient
+
+        x = Tensor([1.0, 2.0, 3.0], requires_grad=True)
+
+        def func(t):
+            return t.sum()
+
+        assert check_gradient(func, x, atol=1e-5, rtol=1e-4)
+
+    def test_state_preservation(self) -> None:
+        """Test that original gradient and requires_grad are preserved."""
+        from titan_ai.tensor.autograd.gradient_check import check_gradient
+        import numpy as np
+
+        x = Tensor([1.0, 2.0, 3.0], requires_grad=True)
+        x._grad = Tensor([0.5, 0.5, 0.5])
+
+        def func(t):
+            return t.sum()
+
+        original_grad = x._grad
+        original_requires_grad = x._requires_grad
+
+        check_gradient(func, x)
+
+        assert x._grad is original_grad
+        assert x._requires_grad == original_requires_grad
+        np.testing.assert_allclose(x._grad.numpy(), [0.5, 0.5, 0.5])

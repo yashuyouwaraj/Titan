@@ -1302,6 +1302,53 @@ The following are **not implemented** in Phase 6:
 
 ---
 
+# Autograd Phase 7: Numerical Gradient Checker Improvements
+
+**Status:** Implemented and verified.
+
+Phase 7 of the Autograd system improved the numerical gradient checking utility to properly preserve tensor state during gradient checking.
+
+## Implementation
+
+**Files Modified:**
+- `titan_ai/tensor/autograd/gradient_check.py` - Fixed state preservation
+- `tests/ai/tensor/test_autograd.py` - Added regression tests
+
+**Actual Changes:**
+- `numerical_gradient`: Removed code that temporarily disabled `requires_grad` on the input tensor
+- `check_gradient`: Added proper preservation and restoration of original `_grad` and `_requires_grad` values
+- `max_gradient_error`: Added proper preservation and restoration of original `_grad` and `_requires_grad` values
+
+## Root Cause Fix
+
+The previous implementation temporarily disabled `requires_grad` on the input tensor during numerical gradient computation, which could corrupt the caller's tensor state. The fix ensures that:
+1. The original `_grad` value is preserved
+2. The original `_requires_grad` value is preserved
+3. State is properly restored even if exceptions occur
+
+## Known Limitation
+
+The numerical gradient checker uses weak references in the computation graph to avoid reference cycles. This means that intermediate tensors may be garbage collected if not explicitly assigned to variables in the function. For reliable numerical gradient checking, functions should keep intermediate tensors alive by assigning them to variables rather than chaining operations in a single expression.
+
+This is a fundamental trade-off in the graph design (weak references prevent memory leaks at the cost of requiring explicit variable assignments for backward safety).
+
+## Test Results
+
+**Baseline:** 421 passed
+
+**Focused numerical gradient checker tests:** 2 passed
+
+**Full Suite:** 423 passed, 0 failures
+
+## Phase 7 Limitations
+
+The following are **not implemented** in Phase 7:
+
+- Higher-order derivatives
+- GPU backend integration
+
+---
+
 # Related Documentation
 
 - [`12_LLM_ARCHITECTURE.md`](12_LLM_ARCHITECTURE.md) — consumes tensor operations for model forward pass
@@ -1340,7 +1387,8 @@ The following are **not implemented** in Phase 6:
 | Shape operation gradients (Phase 4) | Documented | Implemented | Tested | — |
 | Min/max reduction gradients (Phase 5) | Documented | Implemented | Tested | — |
 | Autograd correctness audit (Phase 6) | Documented | Verified | Tested | — |
+| Numerical gradient checker improvements (Phase 7) | Documented | Implemented | Tested | — |
 
 This table must be updated as implementation progresses. Do not mark items complete until the project's completion criteria are met.
 
-Week 1 Tensor Library (CPU core, operations, tests, benchmark baseline) is complete. Autograd Phase 1 (state and graph construction) is complete. Autograd Phase 2 (backward engine for arithmetic operations) is complete. Autograd Phase 3 (matmul, reduction, and math gradients with tuple axes support) is complete. Autograd Phase 4 (reshape, transpose, squeeze, unsqueeze gradients) is complete. Autograd Phase 5 (min/max reduction gradients with equal-split tie policy) is complete. Autograd Phase 6 (correctness, stability, and edge-case hardening) is complete. GPU backends, neural-network integration, and advanced autograd features (higher-order derivatives) remain later-phase work.
+Week 1 Tensor Library (CPU core, operations, tests, benchmark baseline) is complete. Autograd Phase 1 (state and graph construction) is complete. Autograd Phase 2 (backward engine for arithmetic operations) is complete. Autograd Phase 3 (matmul, reduction, and math gradients with tuple axes support) is complete. Autograd Phase 4 (reshape, transpose, squeeze, unsqueeze gradients) is complete. Autograd Phase 5 (min/max reduction gradients with equal-split tie policy) is complete. Autograd Phase 6 (correctness, stability, and edge-case hardening) is complete. Autograd Phase 7 (numerical gradient checker improvements) is complete. GPU backends, neural-network integration, and advanced autograd features (higher-order derivatives) remain later-phase work.

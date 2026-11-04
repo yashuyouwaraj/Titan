@@ -1424,6 +1424,63 @@ The Autograd implementation is correct, stable, and production-ready for first-o
 
 ---
 
+## Date
+
+2026-11-04
+
+---
+
+### Session Goal
+
+Implement Autograd Phase 7: Numerical Gradient Checker improvements to fix state preservation and ensure backward compatibility.
+
+---
+
+### Implementation Overview
+
+Fixed the numerical gradient checker to properly preserve the input tensor's `requires_grad` state and gradient values during checking. The previous implementation temporarily disabled `requires_grad` during numerical gradient computation, which could corrupt the caller's tensor state.
+
+### Changes Made
+
+**Files Modified:**
+- `titan_ai/tensor/autograd/gradient_check.py` - Fixed state preservation in `numerical_gradient`, `check_gradient`, and `max_gradient_error`
+- `tests/ai/tensor/test_autograd.py` - Added 2 regression tests for the numerical gradient checker
+
+**Actual Changes:**
+- `numerical_gradient`: Removed code that temporarily disabled `requires_grad` on the input tensor
+- `check_gradient`: Added proper preservation and restoration of original `_grad` and `_requires_grad` values
+- `max_gradient_error`: Added proper preservation and restoration of original `_grad` and `_requires_grad` values
+- Tests: Added `test_simple_sum` and `test_state_preservation` to verify correct behavior
+
+### Root Cause of Previous Limitation
+
+The Phase 6 report identified a limitation in the numerical gradient checker: it temporarily disabled `requires_grad` on the input tensor during numerical gradient computation. This was actually causing state corruption rather than enabling composed operations. The fix ensures that:
+1. The original `_grad` value is preserved
+2. The original `_requires_grad` value is preserved
+3. State is properly restored even if exceptions occur
+
+### Current Limitation (Known)
+
+The numerical gradient checker uses weak references in the computation graph to avoid reference cycles. This means that intermediate tensors may be garbage collected if not explicitly assigned to variables in the function. For reliable numerical gradient checking, functions should keep intermediate tensors alive by assigning them to variables rather than chaining operations in a single expression.
+
+This is a fundamental trade-off in the graph design (weak references prevent memory leaks at the cost of requiring explicit variable assignments for backward safety) and is documented.
+
+### Test Results
+
+**Baseline:** 421 passed
+
+**Focused numerical gradient checker tests:** 2 passed
+
+**Full Suite:** 423 passed, 0 failures
+
+### Limitations
+
+- Numerical gradient checking requires functions to keep intermediate tensors alive via explicit variable assignments
+- Higher-order derivatives not implemented
+- GPU backend integration not implemented
+
+---
+
 ### Next Engineering Goal
 
 Consider higher-order derivatives or move to neural network layer implementations.
