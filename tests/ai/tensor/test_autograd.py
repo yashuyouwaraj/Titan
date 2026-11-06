@@ -1704,6 +1704,94 @@ class TestNumericalGradientChecker:
 
         assert check_gradient(func, x, atol=1e-5, rtol=1e-4)
 
+    def test_composed_multiply(self) -> None:
+        """Test numerical gradient for composed multiply."""
+        from titan_ai.tensor.autograd.gradient_check import check_gradient
+
+        x = Tensor([1.0, 2.0, 3.0], requires_grad=True)
+
+        def func(t):
+            return ((t * t) * 2.0).sum()
+
+        assert check_gradient(func, x, atol=1e-5, rtol=1e-4)
+
+    def test_composed_arithmetic(self) -> None:
+        """Test numerical gradient for composed arithmetic."""
+        from titan_ai.tensor.autograd.gradient_check import check_gradient
+
+        x = Tensor([1.0, 2.0, 3.0], requires_grad=True)
+
+        def func(t):
+            return ((t * t) + (t * 3.0)).sum()
+
+        assert check_gradient(func, x, atol=1e-5, rtol=1e-4)
+
+    def test_exp(self) -> None:
+        """Test numerical gradient for exp."""
+        from titan_ai.tensor.autograd.gradient_check import check_gradient
+
+        x = Tensor([0.0, 1.0, 2.0], requires_grad=True)
+
+        def func(t):
+            return (t.exp()).sum()
+
+        assert check_gradient(func, x, atol=1e-5, rtol=1e-4)
+
+    def test_log(self) -> None:
+        """Test numerical gradient for log."""
+        from titan_ai.tensor.autograd.gradient_check import check_gradient
+
+        x = Tensor([1.0, 2.0, 3.0], requires_grad=True)
+
+        def func(t):
+            return (t.log()).sum()
+
+        assert check_gradient(func, x, atol=1e-5, rtol=1e-4)
+
+    def test_sqrt(self) -> None:
+        """Test numerical gradient for sqrt."""
+        from titan_ai.tensor.autograd.gradient_check import check_gradient
+
+        x = Tensor([1.0, 4.0, 9.0], requires_grad=True)
+
+        def func(t):
+            return (t.sqrt()).sum()
+
+        assert check_gradient(func, x, atol=1e-5, rtol=1e-4)
+
+    def test_mean(self) -> None:
+        """Test numerical gradient for mean."""
+        from titan_ai.tensor.autograd.gradient_check import check_gradient
+
+        x = Tensor([1.0, 2.0, 3.0], requires_grad=True)
+
+        def func(t):
+            return t.mean()
+
+        assert check_gradient(func, x, atol=1e-5, rtol=1e-4)
+
+    def test_unique_max(self) -> None:
+        """Test numerical gradient for max with unique maximum."""
+        from titan_ai.tensor.autograd.gradient_check import check_gradient
+
+        x = Tensor([1.0, 2.0, 5.0, 3.0], requires_grad=True)
+
+        def func(t):
+            return t.max()
+
+        assert check_gradient(func, x, atol=1e-5, rtol=1e-4)
+
+    def test_unique_min(self) -> None:
+        """Test numerical gradient for min with unique minimum."""
+        from titan_ai.tensor.autograd.gradient_check import check_gradient
+
+        x = Tensor([5.0, 2.0, 1.0, 3.0], requires_grad=True)
+
+        def func(t):
+            return t.min()
+
+        assert check_gradient(func, x, atol=1e-5, rtol=1e-4)
+
     def test_state_preservation(self) -> None:
         """Test that original gradient and requires_grad are preserved."""
         from titan_ai.tensor.autograd.gradient_check import check_gradient
@@ -1723,3 +1811,103 @@ class TestNumericalGradientChecker:
         assert x._grad is original_grad
         assert x._requires_grad == original_requires_grad
         np.testing.assert_allclose(x._grad.numpy(), [0.5, 0.5, 0.5])
+
+
+class TestGraphOwnership:
+    """Test computational graph ownership and tensor lifetime."""
+
+    def test_explicit_intermediate_references(self) -> None:
+        """Test gradient computation with explicit intermediate references."""
+        import numpy as np
+
+        x = Tensor([1.0, 2.0, 3.0], requires_grad=True)
+        a = x * x
+        b = a * 2.0
+        loss = b.sum()
+
+        loss.backward()
+
+        assert x.grad is not None
+        # d/dx of (x^2 * 2) = 4x
+        np.testing.assert_allclose(x.grad.numpy(), [4.0, 8.0, 12.0], atol=1e-6)
+
+    def test_chained_temporary_expressions(self) -> None:
+        """Test gradient computation with chained temporary expressions."""
+        import numpy as np
+
+        x = Tensor([1.0, 2.0, 3.0], requires_grad=True)
+        loss = ((x * x) * 2.0).sum()
+
+        loss.backward()
+
+        assert x.grad is not None
+        # d/dx of (x^2 * 2) = 4x
+        np.testing.assert_allclose(x.grad.numpy(), [4.0, 8.0, 12.0], atol=1e-6)
+
+    def test_multiple_intermediate_operations(self) -> None:
+        """Test gradient computation with multiple intermediate operations."""
+        import numpy as np
+
+        x = Tensor([1.0, 2.0, 3.0], requires_grad=True)
+        loss = ((x * x) + (x * 3.0)).sum()
+
+        loss.backward()
+
+        assert x.grad is not None
+        # d/dx of (x^2 + 3x) = 2x + 3
+        np.testing.assert_allclose(x.grad.numpy(), [5.0, 7.0, 9.0], atol=1e-6)
+
+    def test_shared_intermediate_accumulation(self) -> None:
+        """Test gradient accumulation from shared intermediate tensor."""
+        import numpy as np
+
+        x = Tensor([1.0, 2.0, 3.0], requires_grad=True)
+        y = x * 2
+        a = y + 1
+        b = y + 2
+        c = a + b
+        loss = c.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        # y = [2,4,6], a = [3,5,7], b = [4,6,8], c = [7,11,15]
+        # d(loss)/da = [1,1,1], d(a)/dy = [1,1,1], so [1,1,1]
+        # d(loss)/db = [1,1,1], d(b)/dy = [1,1,1], so [1,1,1]
+        # d(loss)/dy = [2,2,2], d(y)/dx = 2, so [4,4,4]
+        np.testing.assert_allclose(x.grad.numpy(), [4.0, 4.0, 4.0], atol=1e-6)
+
+    def test_branching_accumulation(self) -> None:
+        """Test gradient accumulation from multiple branches."""
+        import numpy as np
+
+        x = Tensor([1.0, 2.0, 3.0], requires_grad=True)
+        a = x * 2
+        b = x * 3
+        c = a + b
+        loss = c.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        # d(loss)/da = [1,1,1], d(a)/dx = 2, so [2,2,2]
+        # d(loss)/db = [1,1,1], d(b)/dx = 3, so [3,3,3]
+        # total: [5,5,5]
+        np.testing.assert_allclose(x.grad.numpy(), [5.0, 5.0, 5.0], atol=1e-6)
+
+    def test_repeated_backward_calls(self) -> None:
+        """Test that multiple backward calls accumulate gradients."""
+        import numpy as np
+
+        x = Tensor([1.0, 2.0, 3.0], requires_grad=True)
+        y = x * 2
+        loss = y.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        np.testing.assert_allclose(x.grad.numpy(), [2.0, 2.0, 2.0], atol=1e-6)
+
+        # Second backward call should accumulate
+        loss2 = y.sum()
+        loss2.backward()
+
+        assert x.grad is not None
+        np.testing.assert_allclose(x.grad.numpy(), [4.0, 4.0, 4.0], atol=1e-6)

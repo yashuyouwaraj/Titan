@@ -1349,6 +1349,140 @@ The following are **not implemented** in Phase 7:
 
 ---
 
+# Autograd Phase 8: Graph Ownership & Tensor Lifetime Engineering
+
+**Status:** Implemented and verified.
+
+Phase 8 of the Autograd system resolved tensor lifetime issues in the computation graph by changing from weak references to strong references for input tensors in graph nodes. This enables composed expressions without manual variable assignment and fixes numerical gradient checking for composed operations.
+
+## Investigation Summary
+
+**Ownership Model Investigation:**
+- Previous implementation used weak references for input tensors in AutogradNode to prevent reference cycles
+- This caused intermediate tensors to be garbage-collected before backward propagation when not explicitly assigned to variables
+- Chained temporary expressions like `((x * x) * 2.0).sum()` would fail because intermediate `x * x` had no strong reference
+- The numerical gradient checker would fail for composed operations for the same reason
+
+**Root Cause:**
+- AutogradNode stored weak references to input tensors: `self._inputs = tuple(weakref.ref(t) for t in inputs)`
+- When temporary expressions were used, intermediate tensors had no strong references and were garbage-collected
+- By the time backward was called, graph nodes would return `None` for inputs that had been collected
+- This broke graph traversal and gradient computation
+
+## Architecture Decision
+
+**Selected Design: Strong Input References in Graph Nodes**
+
+Changed AutogradNode to store strong references to input tensors:
+- AutogradNode now stores `self._inputs = inputs` (strong references)
+- Output remains weakly referenced to break reference cycles through the output
+- This creates reference cycles between graph nodes, but Python's garbage collector handles them correctly
+- When the output tensor is no longer needed, the entire graph (all nodes and referenced tensors) becomes collectible
+
+**Why Strong References:**
+- Ensures intermediate tensors remain alive for backward propagation
+- Enables composed expressions without manual variable assignments
+- Simplest solution that preserves correctness
+- Reference cycles are limited and handled by Python's GC
+
+**Why Alternatives Were Rejected:**
+- Option B (backward-specific saved values): Would require complex operation-specific metadata management
+- Option C (explicit graph ownership): Would introduce significant architectural complexity
+- Weak references with manual retention: Would require user code to manually retain intermediates, which is error-prone
+
+**Trade-offs:**
+- Reference cycles are created but are bounded by the computation graph lifetime
+- Memory is held until the output tensor is no longer needed
+- This is the standard approach used by PyTorch and other autograd frameworks
+
+## Implementation
+
+**Files Modified:**
+- `titan_ai/tensor/autograd/graph.py` - Changed AutogradNode to use strong input references
+- `titan_ai/tensor/autograd/gradient_check.py` - Removed tracking context toggle from numerical gradient computation (simplified)
+- `tests/ai/tensor/test_autograd.py` - Added 8 numerical gradient checker tests for composed operations
+- `tests/ai/tensor/test_autograd.py` - Added 6 graph ownership tests for intermediate lifetime
+
+**Actual Changes:**
+- AutogradNode now stores strong references to input tensors instead of weak references
+- Input property returns tensors directly instead of dereferencing weakrefs
+- Updated docstring to document strong reference behavior and GC handling
+- Numerical gradient checker no longer disables tracking during numerical computation (not needed with strong references)
+- Added comprehensive tests for composed expressions, branching, and temporary expressions
+
+## AutogradNode Structure (Updated)
+
+```python
+class AutogradNode:
+    operation: str  # e.g., "add", "multiply"
+    inputs: tuple[Tensor, ...]  # Strong references to input tensors
+    _output: weakref.ref | None  # Weak reference to output tensor
+    backward_fn: Callable
+    metadata: dict
+```
+
+**Key Change:** Input tensors are now stored as strong references to ensure they remain available during backward propagation. The output tensor remains weakly referenced to break reference cycles through the output path.
+
+## Correctness
+
+**Temporary Expressions:**
+- Case A (explicit intermediates): Works correctly ✓
+- Case B (chained temporaries): Now works correctly ✓
+- Case C (multiple branches): Now works correctly ✓
+
+**Graph Correctness:**
+- Shared intermediate accumulation: Works correctly ✓
+- Branching accumulation: Works correctly ✓
+- Repeated backward calls: Accumulates correctly ✓
+
+**Numerical Gradient Checker:**
+- Simple composed arithmetic: Passes ✓
+- Composed multiply: Passes ✓
+- Composed arithmetic: Passes ✓
+- Exp: Passes ✓
+- Log: Passes ✓
+- Sqrt: Passes ✓
+- Mean: Passes ✓
+- Unique max: Passes ✓
+- Unique min: Passes ✓
+
+## Memory
+
+**Reference Cycles:**
+- Strong references create reference cycles between graph nodes
+- Python's garbage collector handles these cycles correctly
+- When the output tensor is no longer needed, the entire graph becomes collectible
+- No memory leaks observed
+
+**Cleanup Behavior:**
+- Graph and all referenced tensors are freed when output tensor is garbage-collected
+- No explicit graph cleanup mechanism needed
+- This is the standard behavior and matches PyTorch's approach
+
+## Test Results
+
+**Baseline:** 423 passed
+
+**Focused graph ownership tests:** 6 passed
+
+**Focused numerical gradient checker tests:** 10 passed
+
+**Full Suite:** 437 passed, 0 failures
+
+## Phase 8 Limitations
+
+The following are **not implemented** in Phase 8:
+
+- Higher-order derivatives
+- GPU backend integration
+
+**Behavioral Notes:**
+- Reference cycles require Python's garbage collector (standard behavior)
+- Composed expressions now work correctly without manual variable assignment
+- Numerical gradient checking now works for composed operations
+
+---
+
 # Related Documentation
 
 - [`12_LLM_ARCHITECTURE.md`](12_LLM_ARCHITECTURE.md) — consumes tensor operations for model forward pass

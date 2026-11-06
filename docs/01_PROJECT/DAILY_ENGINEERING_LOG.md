@@ -1500,6 +1500,147 @@ These will be implemented in later phases as neural network modules require them
 
 ## Date
 
+2026-11-06
+
+---
+
+### Session Goal
+
+Implement Autograd Phase 8: Graph ownership and tensor lifetime engineering to fix composed expression support.
+
+---
+
+### Investigation Summary
+
+**Ownership Model Investigation:**
+- Previous implementation used weak references for input tensors in AutogradNode to prevent reference cycles
+- This caused intermediate tensors to be garbage-collected before backward propagation when not explicitly assigned to variables
+- Chained temporary expressions like `((x * x) * 2.0).sum()` would fail because intermediate `x * x` had no strong reference
+- The numerical gradient checker would fail for composed operations for the same reason
+
+**Root Cause:**
+- AutogradNode stored weak references to input tensors: `self._inputs = tuple(weakref.ref(t) for t in inputs)`
+- When temporary expressions were used, intermediate tensors had no strong references and were garbage-collected
+- By the time backward was called, graph nodes would return `None` for inputs that had been collected
+- This broke graph traversal and gradient computation
+
+---
+
+### Architecture Decision
+
+**Selected Design: Strong Input References in Graph Nodes**
+
+Changed AutogradNode to store strong references to input tensors:
+- AutogradNode now stores `self._inputs = inputs` (strong references)
+- Output remains weakly referenced to break reference cycles through the output
+- This creates reference cycles between graph nodes, but Python's garbage collector handles them correctly
+- When the output tensor is no longer needed, the entire graph (all nodes and referenced tensors) becomes collectible
+
+**Why Strong References:**
+- Ensures intermediate tensors remain alive for backward propagation
+- Enables composed expressions without manual variable assignments
+- Simplest solution that preserves correctness
+- Reference cycles are limited and handled by Python's GC
+
+**Why Alternatives Were Rejected:**
+- Option B (backward-specific saved values): Would require complex operation-specific metadata management
+- Option C (explicit graph ownership): Would introduce significant architectural complexity
+- Weak references with manual retention: Would require user code to manually retain intermediates, which is error-prone
+
+**Trade-offs:**
+- Reference cycles are created but are bounded by the computation graph lifetime
+- Memory is held until the output tensor is no longer needed
+- This is the standard approach used by PyTorch and other autograd frameworks
+
+---
+
+### Implementation
+
+**Files Modified:**
+- `titan_ai/tensor/autograd/graph.py` - Changed AutogradNode to use strong input references (6 lines)
+- `titan_ai/tensor/autograd/gradient_check.py` - Removed tracking context toggle from numerical gradient computation (simplified, 10 lines removed)
+- `tests/ai/tensor/test_autograd.py` - Added 8 numerical gradient checker tests for composed operations (88 lines)
+- `tests/ai/tensor/test_autograd.py` - Added 6 graph ownership tests for intermediate lifetime (103 lines)
+
+**Actual Changes:**
+- AutogradNode now stores strong references to input tensors instead of weak references
+- Input property returns tensors directly instead of dereferencing weakrefs
+- Updated docstring to document strong reference behavior and GC handling
+- Numerical gradient checker no longer disables tracking during numerical computation (not needed with strong references)
+- Added comprehensive tests for composed expressions, branching, and temporary expressions
+
+---
+
+### Correctness
+
+**Temporary Expressions:**
+- Case A (explicit intermediates): Works correctly ✓
+- Case B (chained temporaries): Now works correctly ✓
+- Case C (multiple branches): Now works correctly ✓
+
+**Graph Correctness:**
+- Shared intermediate accumulation: Works correctly ✓
+- Branching accumulation: Works correctly ✓
+- Repeated backward calls: Accumulates correctly ✓
+
+**Numerical Gradient Checker:**
+- Simple composed arithmetic: Passes ✓
+- Composed multiply: Passes ✓
+- Composed arithmetic: Passes ✓
+- Exp: Passes ✓
+- Log: Passes ✓
+- Sqrt: Passes ✓
+- Mean: Passes ✓
+- Unique max: Passes ✓
+- Unique min: Passes ✓
+
+---
+
+### Memory
+
+**Reference Cycles:**
+- Strong references create reference cycles between graph nodes
+- Python's garbage collector handles these cycles correctly
+- When the output tensor is no longer needed, the entire graph becomes collectible
+- No memory leaks observed
+
+**Cleanup Behavior:**
+- Graph and all referenced tensors are freed when output tensor is garbage-collected
+- No explicit graph cleanup mechanism needed
+- This is the standard behavior and matches PyTorch's approach
+
+---
+
+### Test Results
+
+**Baseline:** 423 passed
+
+**Focused graph ownership tests:** 6 passed
+
+**Focused numerical gradient checker tests:** 10 passed
+
+**Full Suite:** 437 passed, 0 failures
+
+---
+
+### Limitations
+
+- Reference cycles require Python's garbage collector (standard behavior)
+- Higher-order derivatives not implemented
+- GPU backend integration not implemented
+
+---
+
+### Next Engineering Goal
+
+Consider higher-order derivatives or move to neural network layer implementations.
+
+These will be implemented in later phases as neural network modules require them.
+
+---
+
+## Date
+
 2026-10-24
 
 ---
@@ -1609,5 +1750,146 @@ Autograd features not yet implemented:
 
 - Higher-order derivatives
 - GPU backend integration
+
+These will be implemented in later phases as neural network modules require them.
+
+---
+
+## Date
+
+2026-11-06
+
+---
+
+### Session Goal
+
+Implement Autograd Phase 8: Graph ownership and tensor lifetime engineering to fix composed expression support.
+
+---
+
+### Investigation Summary
+
+**Ownership Model Investigation:**
+- Previous implementation used weak references for input tensors in AutogradNode to prevent reference cycles
+- This caused intermediate tensors to be garbage-collected before backward propagation when not explicitly assigned to variables
+- Chained temporary expressions like `((x * x) * 2.0).sum()` would fail because intermediate `x * x` had no strong reference
+- The numerical gradient checker would fail for composed operations for the same reason
+
+**Root Cause:**
+- AutogradNode stored weak references to input tensors: `self._inputs = tuple(weakref.ref(t) for t in inputs)`
+- When temporary expressions were used, intermediate tensors had no strong references and were garbage-collected
+- By the time backward was called, graph nodes would return `None` for inputs that had been collected
+- This broke graph traversal and gradient computation
+
+---
+
+### Architecture Decision
+
+**Selected Design: Strong Input References in Graph Nodes**
+
+Changed AutogradNode to store strong references to input tensors:
+- AutogradNode now stores `self._inputs = inputs` (strong references)
+- Output remains weakly referenced to break reference cycles through the output
+- This creates reference cycles between graph nodes, but Python's garbage collector handles them correctly
+- When the output tensor is no longer needed, the entire graph (all nodes and referenced tensors) becomes collectible
+
+**Why Strong References:**
+- Ensures intermediate tensors remain alive for backward propagation
+- Enables composed expressions without manual variable assignments
+- Simplest solution that preserves correctness
+- Reference cycles are limited and handled by Python's GC
+
+**Why Alternatives Were Rejected:**
+- Option B (backward-specific saved values): Would require complex operation-specific metadata management
+- Option C (explicit graph ownership): Would introduce significant architectural complexity
+- Weak references with manual retention: Would require user code to manually retain intermediates, which is error-prone
+
+**Trade-offs:**
+- Reference cycles are created but are bounded by the computation graph lifetime
+- Memory is held until the output tensor is no longer needed
+- This is the standard approach used by PyTorch and other autograd frameworks
+
+---
+
+### Implementation
+
+**Files Modified:**
+- `titan_ai/tensor/autograd/graph.py` - Changed AutogradNode to use strong input references (6 lines)
+- `titan_ai/tensor/autograd/gradient_check.py` - Removed tracking context toggle from numerical gradient computation (simplified, 10 lines removed)
+- `tests/ai/tensor/test_autograd.py` - Added 8 numerical gradient checker tests for composed operations (88 lines)
+- `tests/ai/tensor/test_autograd.py` - Added 6 graph ownership tests for intermediate lifetime (103 lines)
+
+**Actual Changes:**
+- AutogradNode now stores strong references to input tensors instead of weak references
+- Input property returns tensors directly instead of dereferencing weakrefs
+- Updated docstring to document strong reference behavior and GC handling
+- Numerical gradient checker no longer disables tracking during numerical computation (not needed with strong references)
+- Added comprehensive tests for composed expressions, branching, and temporary expressions
+
+---
+
+### Correctness
+
+**Temporary Expressions:**
+- Case A (explicit intermediates): Works correctly ✓
+- Case B (chained temporaries): Now works correctly ✓
+- Case C (multiple branches): Now works correctly ✓
+
+**Graph Correctness:**
+- Shared intermediate accumulation: Works correctly ✓
+- Branching accumulation: Works correctly ✓
+- Repeated backward calls: Accumulates correctly ✓
+
+**Numerical Gradient Checker:**
+- Simple composed arithmetic: Passes ✓
+- Composed multiply: Passes ✓
+- Composed arithmetic: Passes ✓
+- Exp: Passes ✓
+- Log: Passes ✓
+- Sqrt: Passes ✓
+- Mean: Passes ✓
+- Unique max: Passes ✓
+- Unique min: Passes ✓
+
+---
+
+### Memory
+
+**Reference Cycles:**
+- Strong references create reference cycles between graph nodes
+- Python's garbage collector handles these cycles correctly
+- When the output tensor is no longer needed, the entire graph becomes collectible
+- No memory leaks observed
+
+**Cleanup Behavior:**
+- Graph and all referenced tensors are freed when output tensor is garbage-collected
+- No explicit graph cleanup mechanism needed
+- This is the standard behavior and matches PyTorch's approach
+
+---
+
+### Test Results
+
+**Baseline:** 423 passed
+
+**Focused graph ownership tests:** 6 passed
+
+**Focused numerical gradient checker tests:** 10 passed
+
+**Full Suite:** 437 passed, 0 failures
+
+---
+
+### Limitations
+
+- Reference cycles require Python's garbage collector (standard behavior)
+- Higher-order derivatives not implemented
+- GPU backend integration not implemented
+
+---
+
+### Next Engineering Goal
+
+Consider higher-order derivatives or move to neural network layer implementations.
 
 These will be implemented in later phases as neural network modules require them.

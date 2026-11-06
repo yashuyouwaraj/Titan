@@ -26,35 +26,25 @@ def numerical_gradient(
     Returns:
         NumPy array containing the numerical gradient.
     """
-    from titan_ai.tensor.autograd.context import disable_tracking, enable_tracking
-
     x_np = x.numpy()
     grad_np = np.zeros_like(x_np)
 
-    # Disable tracking during numerical gradient computation
-    was_tracking = disable_tracking()
+    # Iterate over each element
+    for idx in np.ndindex(x_np.shape):
+        # Create perturbations
+        x_plus = x_np.copy()
+        x_minus = x_np.copy()
+        x_plus[idx] += eps
+        x_minus[idx] -= eps
 
-    try:
-        # Iterate over each element
-        for idx in np.ndindex(x_np.shape):
-            # Create perturbations
-            x_plus = x_np.copy()
-            x_minus = x_np.copy()
-            x_plus[idx] += eps
-            x_minus[idx] -= eps
+        # Evaluate function at perturbed points
+        from titan_ai.tensor.core.tensor import Tensor
 
-            # Evaluate function at perturbed points
-            from titan_ai.tensor.core.tensor import Tensor
+        f_plus = func(Tensor(x_plus, dtype=x.dtype, device=x.device, requires_grad=False))
+        f_minus = func(Tensor(x_minus, dtype=x.dtype, device=x.device, requires_grad=False))
 
-            f_plus = func(Tensor(x_plus, dtype=x.dtype, device=x.device, requires_grad=False))
-            f_minus = func(Tensor(x_minus, dtype=x.dtype, device=x.device, requires_grad=False))
-
-            # Central difference
-            grad_np[idx] = (f_plus.numpy() - f_minus.numpy()) / (2 * eps)
-    finally:
-        # Restore tracking state
-        if was_tracking:
-            enable_tracking()
+        # Central difference
+        grad_np[idx] = (f_plus.numpy() - f_minus.numpy()) / (2 * eps)
 
     return grad_np
 

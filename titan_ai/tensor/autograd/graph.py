@@ -12,10 +12,15 @@ if TYPE_CHECKING:
 
 class AutogradNode:
     """Node in the computation graph that stores backward pass information.
-    
+
     Each AutogradNode represents an operation that produced a tensor.
-    It stores references to the input tensors (via weak references to avoid cycles),
-    the operation name, and a callable that will compute gradients during backward.
+    It stores references to the input tensors, the operation name, and a callable
+    that will compute gradients during backward.
+
+    Note: Input tensors are stored as strong references to ensure they remain
+    available during backward propagation. This creates reference cycles,
+    but Python's garbage collector handles them correctly. The graph and all
+    its referenced tensors are freed when the output tensor is no longer needed.
     """
 
     def __init__(
@@ -26,7 +31,7 @@ class AutogradNode:
         metadata: dict[str, Any] | None = None,
     ) -> None:
         """Initialize an AutogradNode.
-        
+
         Args:
             operation: Name of the operation (e.g., "add", "multiply").
             inputs: Tuple of input tensors to the operation.
@@ -34,15 +39,15 @@ class AutogradNode:
             metadata: Optional dictionary with additional operation metadata.
         """
         self.operation = operation
-        self._inputs = tuple(weakref.ref(t) for t in inputs)
+        self._inputs = inputs  # Store strong references to keep inputs alive for backward
         self._output: "weakref.ref | None" = None  # Set by attach_grad_fn
         self.backward_fn = backward_fn
         self.metadata = metadata or {}
 
     @property
-    def inputs(self) -> tuple["Tensor | None", ...]:
-        """Return the input tensors (may be None if already garbage collected)."""
-        return tuple(ref() for ref in self._inputs)
+    def inputs(self) -> tuple["Tensor", ...]:
+        """Return the input tensors."""
+        return self._inputs
 
     @property
     def output(self) -> "Tensor | None":
